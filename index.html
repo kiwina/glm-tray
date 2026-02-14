@@ -4,30 +4,36 @@
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GLM Tray Monitor</title>
+    <title>GLM Tray</title>
     <script type="module" src="/src/main.ts" defer></script>
   </head>
-
   <body>
     <main class="app-shell">
-      <header class="header">
-        <div class="header-top">
-          <div>
-            <h1>GLM Tray</h1>
-            <p class="subtext">Quota monitor &middot; <span id="runtime-mode"></span></p>
-          </div>
-          <div class="actions">
-            <button id="start-btn" type="button">Start</button>
-            <button id="stop-btn" type="button">Stop</button>
-            <button id="warmup-btn" type="button">Warmup</button>
-          </div>
+      <aside class="sidebar">
+        <nav class="sidebar-nav" id="sidebar-nav"></nav>
+        <div class="sidebar-footer">
+          <button class="nav-btn" id="warmup-btn" title="Warmup All Keys">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+            <span class="nav-label">Warmup</span>
+          </button>
         </div>
-      </header>
-
-      <nav id="tabs" class="tabs" aria-label="API key tabs"></nav>
-      <section id="panels" class="panels"></section>
-
-      <footer class="status-bar" id="runtime-status"><span class="status-idle">Idle</span></footer>
+      </aside>
+      <div class="main-area">
+        <header class="main-header">
+          <h1 id="page-title">Dashboard</h1>
+          <div class="header-actions">
+            <button id="start-btn" class="header-btn" title="Start monitoring">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <button id="stop-btn" class="header-btn" title="Stop monitoring">
+              <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            </button>
+          </div>
+        </header>
+        <div class="main-content" id="content-area"></div>
+      </div>
     </main>
   </body>
 </html>

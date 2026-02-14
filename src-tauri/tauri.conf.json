@@ -13,13 +13,13 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "GLM Tray Settings",
-        "width": 660,
-        "height": 580,
-        "minWidth": 660,
-        "minHeight": 580,
-        "maxWidth": 660,
-        "maxHeight": 580,
+        "title": "GLM Tray",
+        "width": 720,
+        "height": 600,
+        "minWidth": 720,
+        "minHeight": 600,
+        "maxWidth": 720,
+        "maxHeight": 600,
         "resizable": false,
         "visible": false
       }
@@ -31,6 +31,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "category": "Utility",
+    "shortDescription": "System tray quota monitor for GLM API keys",
+    "longDescription": "A lightweight system tray application that monitors API key quota usage with configurable polling, wake scheduling, exponential backoff, and multi-key support.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
