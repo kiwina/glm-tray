@@ -1,0 +1,217 @@
+:root {
+  font-family: "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 400;
+  color: #000;
+  background: #fff;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+}
+
+.app-shell {
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---- header ---- */
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+}
+
+.subtext {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  color: #666;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* ---- tabs ---- */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #000;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 6px 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid #ccc;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: #fff;
+  color: #666;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: #000;
+  color: #fff;
+  border-color: #000;
+}
+
+/* ---- cards ---- */
+.slot-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  padding: 14px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+}
+
+.hint {
+  margin: 2px 0 10px;
+  color: #888;
+  font-size: 0.8rem;
+}
+
+.field {
+  margin-bottom: 8px;
+}
+
+.field:last-of-type {
+  margin-bottom: 0;
+}
+
+.switches {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.mode-block {
+  margin-top: 8px;
+}
+
+.times-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.hidden {
+  display: none;
+}
+
+/* ---- form controls ---- */
+label {
+  display: grid;
+  gap: 3px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #333;
+}
+
+input,
+select,
+button {
+  border-radius: 4px;
+  border: 1px solid #bbb;
+  padding: 0.4em 0.55em;
+  font-size: 0.88em;
+  font-family: inherit;
+  color: #000;
+  background: #fff;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: #000;
+}
+
+button {
+  cursor: pointer;
+  font-weight: 600;
+  background: #fff;
+  border-color: #000;
+}
+
+button:hover {
+  background: #000;
+  color: #fff;
+}
+
+.primary {
+  min-width: 140px;
+  background: #000;
+  color: #fff;
+  border-color: #000;
+}
+
+.primary:hover {
+  background: #333;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.form-error {
+  margin: 0;
+  color: #000;
+  font-weight: 600;
+  font-size: 0.84rem;
+}
+
+/* ---- status footer ---- */
+.status {
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  border-top: 1px solid #ddd;
+  color: #555;
+}
+
+/* ---- responsive ---- */
+@media (max-width: 520px) {
+  .times-grid {
+    grid-template-columns: 1fr;
+  }
+}

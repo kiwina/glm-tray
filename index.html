@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GLM Tray Monitor</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <main class="app-shell">
+      <header class="header">
+        <div class="header-top">
+          <div>
+            <h1>GLM Tray</h1>
+            <p class="subtext">Quota monitor &middot; <span id="runtime-mode"></span></p>
+          </div>
+          <div class="actions">
+            <button id="start-btn" type="button">Start</button>
+            <button id="stop-btn" type="button">Stop</button>
+          </div>
+        </div>
+      </header>
+
+      <nav id="tabs" class="tabs" aria-label="API key tabs"></nav>
+      <section id="panels" class="panels"></section>
+
+      <footer class="status" id="runtime-status">Runtime: idle</footer>
+    </main>
+  </body>
+</html>
