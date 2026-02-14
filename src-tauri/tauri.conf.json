@@ -13,9 +13,14 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "glm-tray",
-        "width": 800,
-        "height": 600,
+        "title": "GLM Tray Settings",
+        "width": 660,
+        "height": 580,
+        "minWidth": 660,
+        "minHeight": 580,
+        "maxWidth": 660,
+        "maxHeight": 580,
+        "resizable": false,
         "visible": false
       }
     ],

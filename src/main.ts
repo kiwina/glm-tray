@@ -4,6 +4,7 @@ type WakeMode = "interval" | "times" | "after_reset";
 
 interface KeySlotConfig {
   slot: number;
+  name: string;
   enabled: boolean;
   api_key: string;
   quota_url: string;
@@ -22,10 +23,15 @@ interface AppConfig {
 
 interface SlotRuntimeStatus {
   slot: number;
+  name: string;
   enabled: boolean;
+  timer_active: boolean;
   percentage: number | null;
   next_reset_hms: string | null;
   last_error: string | null;
+  last_updated_epoch_ms: number | null;
+  consecutive_errors: number;
+  auto_disabled: boolean;
 }
 
 interface RuntimeStatus {
@@ -39,10 +45,12 @@ const isTauriRuntime = typeof window !== "undefined" && "__TAURI_INTERNALS__" in
 let currentTab = 1;
 let configState: AppConfig | null = null;
 let previewRuntime: RuntimeStatus = { monitoring: false, slots: [] };
+let latestRuntime: RuntimeStatus | null = null;
 
 function defaultSlot(slot: number): KeySlotConfig {
   return {
     slot,
+    name: "",
     enabled: false,
     api_key: "",
     quota_url: "https://api.z.ai/api/monitor/usage/quota/limit",
@@ -67,10 +75,15 @@ function defaultRuntimeStatus(): RuntimeStatus {
     monitoring: false,
     slots: [1, 2, 3, 4, 5].map((s) => ({
       slot: s,
+      name: "",
       enabled: false,
+      timer_active: false,
       percentage: null,
       next_reset_hms: null,
       last_error: null,
+      last_updated_epoch_ms: null,
+      consecutive_errors: 0,
+      auto_disabled: false,
     })),
   };
 }
@@ -96,10 +109,15 @@ async function backendInvoke<T>(command: string, args?: Record<string, unknown>)
       previewRuntime.monitoring = true;
       previewRuntime.slots = config.slots.map((s) => ({
         slot: s.slot,
+        name: s.name,
         enabled: s.enabled,
+        timer_active: s.enabled,
         percentage: s.enabled ? Math.floor(Math.random() * 100) : null,
         next_reset_hms: s.enabled ? "--:--:--" : null,
         last_error: null,
+        last_updated_epoch_ms: null,
+        consecutive_errors: 0,
+        auto_disabled: false,
       }));
       return undefined as T;
     case "stop_monitoring":
@@ -107,6 +125,8 @@ async function backendInvoke<T>(command: string, args?: Record<string, unknown>)
       return undefined as T;
     case "get_runtime_status":
       return previewRuntime as T;
+    case "warmup_all":
+      return undefined as T;
     default:
       throw new Error(`Unsupported command in preview mode: ${command}`);
   }
@@ -147,13 +167,30 @@ function createTabs() {
     btn.type = "button";
     btn.className = "tab-btn";
     btn.dataset.tab = String(i);
-    btn.textContent = String(i);
     btn.addEventListener("click", () => {
       currentTab = i;
       render();
     });
     tabs.appendChild(btn);
   }
+}
+
+function updateTabLabels() {
+  document.querySelectorAll<HTMLButtonElement>(".tab-btn").forEach((btn) => {
+    const idx = Number(btn.dataset.tab);
+    const slot = configState?.slots.find((s) => s.slot === idx);
+    const rt = latestRuntime?.slots.find((s) => s.slot === idx);
+    const label = slot?.name || String(idx);
+
+    let dotClass = "off";
+    if (rt?.auto_disabled) dotClass = "err";
+    else if (rt?.consecutive_errors && rt.consecutive_errors > 0) dotClass = "err";
+    else if (rt?.enabled) dotClass = "on";
+    else if (slot?.enabled) dotClass = "on";
+
+    btn.innerHTML = `<span class="tab-dot ${dotClass}"></span>${label}`;
+    btn.classList.toggle("active", idx === currentTab);
+  });
 }
 
 function renderPanel() {
@@ -169,6 +206,11 @@ function renderPanel() {
       <section class="card">
         <h2>Key ${s.slot}</h2>
         <p class="hint">Credentials and polling.</p>
+        <div class="field">
+          <label>Name
+            <input id="slot-name" type="text" value="${s.name}" placeholder="e.g. Production" />
+          </label>
+        </div>
         <div class="field">
           <label>API Key
             <input id="api-key" type="password" value="${s.api_key}" placeholder="Bearer ..." autocomplete="off" />
@@ -256,6 +298,7 @@ function renderPanel() {
     errEl.hidden = true;
 
     const n = slotByTab(currentTab);
+    n.name = (document.getElementById("slot-name") as HTMLInputElement).value.trim();
     n.api_key = (document.getElementById("api-key") as HTMLInputElement).value.trim();
     n.quota_url = (document.getElementById("quota-url") as HTMLInputElement).value.trim();
     const rUrl = (document.getElementById("request-url") as HTMLInputElement).value.trim();
@@ -285,34 +328,58 @@ function renderPanel() {
   });
 }
 
-function renderTabs() {
-  document.querySelectorAll<HTMLButtonElement>(".tab-btn").forEach((btn) => {
-    btn.classList.toggle("active", Number(btn.dataset.tab) === currentTab);
-  });
+function render() {
+  updateTabLabels();
+  renderPanel();
 }
 
-function render() {
-  renderTabs();
-  renderPanel();
+function syncButtons(monitoring: boolean) {
+  const start = document.getElementById("start-btn") as HTMLButtonElement | null;
+  const stop = document.getElementById("stop-btn") as HTMLButtonElement | null;
+  if (start) start.disabled = monitoring;
+  if (stop) stop.disabled = !monitoring;
 }
 
 async function refreshRuntimeStatus() {
   const rt = await backendInvoke<RuntimeStatus>("get_runtime_status");
-  const lines = rt.slots
-    .filter((s) => s.enabled)
-    .map((s) => {
-      const pct = s.percentage == null ? "n/a" : `${s.percentage}%`;
-      const reset = s.next_reset_hms ?? "--:--:--";
-      const err = s.last_error ? ` err` : "";
-      return `${s.slot}: ${pct} ${reset}${err}`;
-    });
+  latestRuntime = rt;
+  syncButtons(rt.monitoring);
 
   const el = document.getElementById("runtime-status") as HTMLDivElement;
-  if (lines.length === 0) {
-    el.textContent = rt.monitoring ? "Monitoring (waiting...)" : "Idle";
-  } else {
-    el.textContent = lines.join("  \u00b7  ");
+  const active = rt.slots.filter((s) => s.enabled);
+
+  if (active.length === 0) {
+    el.innerHTML = `<span class="status-idle">${rt.monitoring ? "Monitoring (waiting\u2026)" : "Idle"}</span>`;
+    updateTabLabels();
+    return;
   }
+
+  const rows = active.map((s) => {
+    const label = s.name || `Key ${s.slot}`;
+
+    if (s.auto_disabled) {
+      return `<div class="status-row">
+        <span class="slot-label">${label}</span>
+        <span class="slot-disabled">AUTO-DISABLED (${s.consecutive_errors} errors)</span>
+      </div>`;
+    }
+
+    const pct = s.percentage == null ? "n/a" : `${s.percentage}%`;
+    const reset = s.next_reset_hms ?? (s.timer_active ? "--:--:--" : "idle");
+    const errPart = s.consecutive_errors > 0
+      ? `<span class="slot-err">err x${s.consecutive_errors}</span>`
+      : "";
+
+    return `<div class="status-row">
+      <span class="slot-label">${label}</span>
+      <span class="slot-pct">${pct}</span>
+      <span>${reset}</span>
+      ${errPart}
+    </div>`;
+  });
+
+  el.innerHTML = rows.join("");
+  updateTabLabels();
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
@@ -323,14 +390,25 @@ window.addEventListener("DOMContentLoaded", async () => {
   configState = await backendInvoke<AppConfig>("load_settings");
   render();
 
-  document.getElementById("start-btn")?.addEventListener("click", async () => {
+  const startBtn = document.getElementById("start-btn") as HTMLButtonElement;
+  const stopBtn = document.getElementById("stop-btn") as HTMLButtonElement;
+  startBtn.disabled = true;
+  stopBtn.disabled = true;
+
+  startBtn.addEventListener("click", async () => {
+    startBtn.disabled = true;
     await backendInvoke("start_monitoring");
     await refreshRuntimeStatus();
   });
 
-  document.getElementById("stop-btn")?.addEventListener("click", async () => {
+  stopBtn.addEventListener("click", async () => {
+    stopBtn.disabled = true;
     await backendInvoke("stop_monitoring");
     await refreshRuntimeStatus();
+  });
+
+  document.getElementById("warmup-btn")?.addEventListener("click", async () => {
+    await backendInvoke("warmup_all");
   });
 
   await refreshRuntimeStatus();

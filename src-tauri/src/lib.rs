@@ -142,6 +142,17 @@ pub fn run() {
             });
 
             tray::setup_tray(&app_handle)?;
+
+            // Auto-start monitoring on launch
+            let startup_handle = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(err) = start_monitoring_internal(startup_handle).await {
+                    warn!("auto-start monitoring failed: {}", err);
+                } else {
+                    info!("monitoring auto-started on launch");
+                }
+            });
+
             Ok(())
         })
         .on_window_event(|window, event| {
