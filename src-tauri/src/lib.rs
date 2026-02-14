@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use log::{error, info, warn};
 use models::{AppConfig, RuntimeStatus};
+use models::SlotStats;
 use tauri::Manager;
 use tokio::sync::{Mutex, RwLock};
 
@@ -71,6 +72,18 @@ async fn get_runtime_status(state: tauri::State<'_, SharedState>) -> Result<Runt
 #[tauri::command]
 async fn warmup_all(app: tauri::AppHandle) -> Result<(), String> {
     warmup_all_internal(app).await
+}
+
+#[tauri::command]
+async fn fetch_slot_stats(state: tauri::State<'_, SharedState>, slot: usize) -> Result<SlotStats, String> {
+    let config = state.config.read().await;
+    let slot_cfg = config.slots.iter().find(|s| s.slot == slot)
+        .ok_or_else(|| format!("slot {slot} not found"))?;
+    if slot_cfg.api_key.trim().is_empty() {
+        return Err("no API key configured".into());
+    }
+    let client = api_client::ApiClient::new()?;
+    client.fetch_slot_stats(slot_cfg).await
 }
 
 pub async fn start_monitoring_internal(app: tauri::AppHandle) -> Result<(), String> {
@@ -161,13 +174,15 @@ pub fn run() {
                 let _ = window.hide();
             }
         })
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             load_settings,
             save_settings,
             start_monitoring,
             stop_monitoring,
             get_runtime_status,
-            warmup_all
+            warmup_all,
+            fetch_slot_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

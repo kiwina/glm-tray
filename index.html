@@ -7,32 +7,42 @@
     <title>GLM Tray</title>
     <script type="module" src="/src/main.ts" defer></script>
   </head>
-  <body>
-    <main class="app-shell">
-      <aside class="sidebar">
-        <nav class="sidebar-nav" id="sidebar-nav"></nav>
-        <div class="sidebar-footer">
-          <button class="nav-btn" id="warmup-btn" title="Warmup All Keys">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <body class="h-screen overflow-hidden bg-base-300">
+    <main class="flex h-screen">
+      <aside class="w-[76px] bg-base-200 border-r border-neutral flex flex-col shrink-0">
+        <nav class="flex-1 flex flex-col py-2 gap-0.5" id="sidebar-nav"></nav>
+        <div class="border-t border-neutral py-2">
+          <button class="nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent text-base-content/60 cursor-pointer hover:text-base-content hover:bg-base-content/[.04] transition" id="warmup-btn" title="Warmup All Keys">
+            <svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
             </svg>
-            <span class="nav-label">Warmup</span>
+            <span class="text-[10px] font-medium tracking-wide">Warmup</span>
           </button>
         </div>
+        <div class="border-t border-neutral py-2">
+          <a href="https://z.ai/subscribe?ic=GONVESHW5A" target="_blank" rel="noopener" class="block mt-3 mb-1 text-center sidebar-logo-link">
+            <img src="/src/assets/logo-white.svg" alt="" class="w-8 h-8 mx-auto opacity-50 hover:opacity-90 transition-opacity" />
+          </a>
+        </div>
       </aside>
-      <div class="main-area">
-        <header class="main-header">
-          <h1 id="page-title">Dashboard</h1>
-          <div class="header-actions">
-            <button id="start-btn" class="header-btn" title="Start monitoring">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      <div class="flex-1 flex flex-col min-w-0">
+        <header class="flex items-center justify-between px-5 py-3.5 border-b border-neutral shrink-0">
+          <h1 id="page-title" class="text-lg font-semibold tracking-tight">GLM Tray</h1>
+          <div class="flex gap-1.5">
+            <button id="theme-btn" class="btn btn-sm btn-square btn-ghost" title="Toggle theme">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/>
+              </svg>
             </button>
-            <button id="stop-btn" class="header-btn" title="Stop monitoring">
-              <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            <button id="start-btn" class="btn btn-sm btn-square btn-outline" title="Start monitoring">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <button id="stop-btn" class="btn btn-sm btn-square btn-outline" title="Stop monitoring">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
             </button>
           </div>
         </header>
-        <div class="main-content" id="content-area"></div>
+        <div class="flex-1 overflow-hidden" id="content-area"></div>
       </div>
     </main>
   </body>

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const MAX_SLOTS: usize = 5;
+pub const MAX_SLOTS: usize = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -31,6 +31,7 @@ pub struct KeySlotConfig {
     pub wake_times: Vec<String>,
     pub wake_after_reset_minutes: u64,
     pub poll_interval_minutes: u64,
+    pub logging: bool,
 }
 
 impl Default for KeySlotConfig {
@@ -48,6 +49,7 @@ impl Default for KeySlotConfig {
             wake_times: Vec::new(),
             wake_after_reset_minutes: 1,
             poll_interval_minutes: 30,
+            logging: false,
         }
     }
 }
@@ -56,6 +58,7 @@ impl Default for KeySlotConfig {
 #[serde(default)]
 pub struct AppConfig {
     pub slots: Vec<KeySlotConfig>,
+    pub theme: String,
 }
 
 impl Default for AppConfig {
@@ -66,7 +69,7 @@ impl Default for AppConfig {
             slot.slot = idx + 1;
             slots.push(slot);
         }
-        Self { slots }
+        Self { slots, theme: "glm".to_string() }
     }
 }
 
@@ -133,4 +136,130 @@ pub struct QuotaSnapshot {
     pub timer_active: bool,
     pub next_reset_hms: Option<String>,
     pub next_reset_epoch_ms: Option<i64>,
+}
+
+// ---- Stats API types ----
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct QuotaLimitFull {
+    pub r#type: String,
+    #[serde(default)]
+    pub unit: Option<u64>,
+    #[serde(default)]
+    pub number: Option<u64>,
+    #[serde(default)]
+    pub usage: Option<u64>,
+    #[serde(default)]
+    pub current_value: Option<u64>,
+    #[serde(default)]
+    pub remaining: Option<u64>,
+    pub percentage: u8,
+    #[serde(default)]
+    pub next_reset_time: Option<i64>,
+    #[serde(default)]
+    pub usage_details: Vec<UsageDetailRaw>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageDetailRaw {
+    pub model_code: String,
+    pub usage: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct QuotaDataFull {
+    pub limits: Vec<QuotaLimitFull>,
+    #[serde(default)]
+    pub level: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct QuotaApiResponseFull {
+    pub code: i32,
+    pub data: Option<QuotaDataFull>,
+}
+
+// Model-usage response
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelUsageTotals {
+    #[serde(default)]
+    pub total_model_call_count: u64,
+    #[serde(default)]
+    pub total_tokens_usage: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelUsageData {
+    #[serde(default)]
+    pub total_usage: Option<ModelUsageTotals>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelUsageApiResponse {
+    pub code: i32,
+    pub data: Option<ModelUsageData>,
+}
+
+// Tool-usage response
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolUsageTotals {
+    #[serde(default)]
+    pub total_network_search_count: u64,
+    #[serde(default)]
+    pub total_web_read_mcp_count: u64,
+    #[serde(default)]
+    pub total_zread_mcp_count: u64,
+    #[serde(default)]
+    pub total_search_mcp_count: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolUsageData {
+    #[serde(default)]
+    pub total_usage: Option<ToolUsageTotals>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ToolUsageApiResponse {
+    pub code: i32,
+    pub data: Option<ToolUsageData>,
+}
+
+// Combined stats returned to frontend
+#[derive(Debug, Clone, Serialize)]
+pub struct LimitInfo {
+    pub type_name: String,
+    pub percentage: u8,
+    pub usage: Option<u64>,
+    pub current_value: Option<u64>,
+    pub remaining: Option<u64>,
+    pub next_reset_time: Option<i64>,
+    pub next_reset_hms: Option<String>,
+    pub usage_details: Vec<UsageDetailInfo>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UsageDetailInfo {
+    pub model_code: String,
+    pub usage: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SlotStats {
+    pub level: String,
+    pub limits: Vec<LimitInfo>,
+    pub total_model_calls_24h: u64,
+    pub total_tokens_24h: u64,
+    pub total_network_search_24h: u64,
+    pub total_web_read_24h: u64,
+    pub total_zread_24h: u64,
+    pub total_search_mcp_24h: u64,
 }

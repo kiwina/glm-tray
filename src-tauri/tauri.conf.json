@@ -14,12 +14,12 @@
     "windows": [
       {
         "title": "GLM Tray",
-        "width": 720,
-        "height": 600,
-        "minWidth": 720,
-        "minHeight": 600,
-        "maxWidth": 720,
-        "maxHeight": 600,
+        "width": 500,
+        "height": 500,
+        "minWidth": 500,
+        "minHeight": 500,
+        "maxWidth": 500,
+        "maxHeight": 500,
         "resizable": false,
         "visible": false
       }
