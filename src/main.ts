@@ -180,8 +180,8 @@ function normalizeConfig(config: AppConfig): AppConfig {
   return { slots, theme: config.theme ?? "glm" };
 }
 
-function applyTheme(theme: string) {
-  document.documentElement.setAttribute("data-theme", theme);
+function applyTheme() {
+  document.documentElement.setAttribute("data-theme", "glm");
 }
 
 function isValidHm(value: string): boolean {
@@ -257,6 +257,7 @@ async function backendInvoke<T>(
     case "get_runtime_status":
       return previewRuntime as T;
     case "warmup_all":
+      await new Promise((r) => setTimeout(r, 3000));
       return undefined as T;
     case "fetch_slot_stats": {
       const slot = (args?.slot as number) ?? 1;
@@ -358,7 +359,7 @@ function updateSidebar() {
 function renderDashboard() {
   const root = document.getElementById("content-area") as HTMLDivElement;
   (document.getElementById("page-title") as HTMLHeadingElement).textContent =
-    "GLM Tray";
+    "GLM Tray v0.01-alpha";
 
   const rt = latestRuntime ?? { monitoring: false, slots: [] };
   const config = configState ?? defaultConfig();
@@ -374,11 +375,13 @@ function renderDashboard() {
       : "";
 
   let html = `<div class="h-full overflow-y-auto p-4 main-content">
-    <div class="card bg-base-100 border border-neutral mb-2.5">
-      <div class="flex items-center gap-3 px-3 py-2 text-xs font-semibold">
-        ${monLabel}
-        <span class="text-base-content/50">${enabledSlots.length}/${MAX_KEYS} active</span>
-        ${errLabel}
+    <div class="card bg-base-100 card-border border-base-300 card-sm from-base-content/5 bg-linear-to-bl to-50% mb-3">
+      <div class="card-body p-3">
+        <div class="flex items-center gap-3 text-xs font-semibold">
+          ${monLabel}
+          <span class="opacity-50">${enabledSlots.length}/${MAX_KEYS} active</span>
+          ${errLabel}
+        </div>
       </div>
     </div>`;
 
@@ -389,7 +392,7 @@ function renderDashboard() {
 
     let rightSide = "";
     if (rtSlot?.auto_disabled) {
-      rightSide = `<span class="text-error text-xs font-semibold">DISABLED (${rtSlot.consecutive_errors} err)</span>`;
+      rightSide = `<span class="badge badge-sm badge-soft badge-error">DISABLED</span>`;
     } else if (rtSlot && rtSlot.percentage != null) {
       const pct = rtSlot.percentage;
       const reset = rtSlot.next_reset_hms ?? "--:--:--";
@@ -398,21 +401,19 @@ function renderDashboard() {
           ? `<span class="badge badge-error badge-xs">\u00D7${rtSlot.consecutive_errors}</span>`
           : "";
       rightSide = `
-        <progress class="progress ${pctBarClass(pct)} w-16" value="${pct}" max="100"></progress>
+        <progress class="progress ${pctBarClass(pct)} w-14" value="${pct}" max="100"></progress>
         <span class="text-sm font-bold tabular-nums min-w-8 text-right">${pct}%</span>
-        <span class="text-xs text-base-content/50 tabular-nums">${reset}</span>
+        <span class="text-[10px] opacity-40 tabular-nums">${reset}</span>
         ${errBadge}`;
     } else {
-      rightSide = `<span class="text-xs text-base-content/30">waiting\u2026</span>`;
+      rightSide = `<span class="text-xs opacity-30">waiting\u2026</span>`;
     }
 
     html += `
-      <div class="card bg-base-100 border border-neutral mb-1.5 cursor-pointer hover:border-base-content/20 hover:bg-base-content/[.03] transition key-row" data-slot="${slot.slot}">
-        <div class="flex items-center gap-2.5 px-3 py-2.5">
-          <span class="w-2.5 h-2.5 rounded-full shrink-0 ${dc}"></span>
-          <span class="text-sm font-semibold whitespace-nowrap min-w-[60px]">${esc(name)}</span>
-          <div class="flex items-center gap-2 ml-auto shrink-0">${rightSide}</div>
-        </div>
+      <div class="border-t-base-content/5 flex items-center gap-2.5 border-t border-dashed py-2.5 px-1 cursor-pointer hover:bg-base-content/[.03] transition key-row" data-slot="${slot.slot}">
+        <span class="w-2 h-2 rounded-full shrink-0 ${dc}"></span>
+        <span class="text-sm font-semibold whitespace-nowrap min-w-[60px]">${esc(name)}</span>
+        <div class="flex items-center gap-2 ml-auto shrink-0">${rightSide}</div>
       </div>`;
   }
 
@@ -420,17 +421,16 @@ function renderDashboard() {
   if (freeSlots.length > 0) {
     const nextFree = freeSlots[0].slot;
     html += `
-      <div class="card border border-dashed border-neutral mb-1.5 cursor-pointer hover:text-primary hover:border-primary transition add-key-row" data-slot="${nextFree}">
-        <div class="flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-semibold text-base-content/30">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          <span>Add Key</span>
-        </div>
+      <div class="border-t-base-content/5 flex items-center justify-center gap-2 border-t border-dashed py-2.5 px-1 cursor-pointer opacity-30 hover:opacity-70 hover:text-primary transition add-key-row" data-slot="${nextFree}">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        <span class="text-sm font-semibold">Add Key</span>
       </div>`;
   }
 
+  html += `<div class="text-center text-[10px] opacity-20 mt-3 pb-1">v0.01-alpha</div>`;
   html += `</div>`; // close scrolling wrapper
 
   root.innerHTML = html;
@@ -461,21 +461,29 @@ function renderDashboard() {
 function renderKeyDetailShell() {
   const slotNum = Number(currentView);
   const s = slotByView(currentView);
+  const hasKey = s.api_key.trim().length > 0;
   const root = document.getElementById("content-area") as HTMLDivElement;
   (document.getElementById("page-title") as HTMLHeadingElement).textContent =
     s.name || `Key ${slotNum}`;
+
+  // Force settings tab when no API key is configured
+  if (!hasKey && currentKeyTab !== "settings") {
+    currentKeyTab = "settings";
+  }
+
+  const lockedCls = !hasKey ? "opacity-30 pointer-events-none" : "";
 
   root.innerHTML = `
     <div class="flex flex-col h-full">
       <div class="flex-1 overflow-y-auto p-4 main-content" id="tab-content"></div>
       <div class="key-dock shrink-0" id="key-dock">
-        <button data-tab="stats" class="${currentKeyTab === "stats" ? "dock-active" : ""}">
+        <button data-tab="stats" class="${currentKeyTab === "stats" ? "dock-active" : ""} ${lockedCls}" ${!hasKey ? 'disabled title="Add an API key first"' : ""}>
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>
           </svg>
           Stats
         </button>
-        <button data-tab="schedule" class="${currentKeyTab === "schedule" ? "dock-active" : ""}">
+        <button data-tab="schedule" class="${currentKeyTab === "schedule" ? "dock-active" : ""} ${lockedCls}" ${!hasKey ? 'disabled title="Add an API key first"' : ""}>
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
           </svg>
@@ -491,7 +499,7 @@ function renderKeyDetailShell() {
       </div>
     </div>`;
 
-  document.querySelectorAll<HTMLButtonElement>("#key-dock button").forEach((btn) => {
+  document.querySelectorAll<HTMLButtonElement>("#key-dock button:not([disabled])").forEach((btn) => {
     btn.addEventListener("click", () => {
       currentKeyTab = btn.dataset.tab as KeyTab;
       renderKeyDetailShell();
@@ -569,16 +577,13 @@ function renderStatsTab(tc: HTMLDivElement) {
   if (rtSlot && rtSlot.enabled) {
     if (rtSlot.auto_disabled) {
       heroHtml = `
-        <div class="flex flex-col items-center py-4">
-          <div class="text-error stat-value mb-1">!</div>
-          <div class="stat-label text-error">Auto-disabled &middot; ${rtSlot.consecutive_errors} errors</div>
+        <div class="alert alert-soft alert-error text-xs font-bold mb-2">
+          Auto-disabled &middot; ${rtSlot.consecutive_errors} consecutive errors
         </div>`;
-    } else if (rtSlot.percentage != null) {
+    } else if (rtSlot.consecutive_errors > 0) {
       heroHtml = `
-        <div class="flex flex-col items-center py-3">
-          ${radialGauge(rtSlot.percentage, 96, 7)}
-          <span class="stat-label mt-2">Quota used &middot; Reset ${rtSlot.next_reset_hms ?? "--:--:--"}</span>
-          ${rtSlot.consecutive_errors > 0 ? `<span class="text-xs text-error mt-1">err \u00D7${rtSlot.consecutive_errors}</span>` : ""}
+        <div class="alert alert-dash alert-warning text-xs font-bold mb-2">
+          ${rtSlot.consecutive_errors} error${rtSlot.consecutive_errors !== 1 ? "s" : ""}
         </div>`;
     }
   }
@@ -610,65 +615,88 @@ function renderStatsTab(tc: HTMLDivElement) {
     const remainStr = lim.remaining != null ? formatTokens(lim.remaining) : "";
 
     const detailBadges = lim.usage_details.length > 0
-      ? `<div class="flex flex-wrap gap-1 mt-1.5">${lim.usage_details.map((d) => `<span class="badge badge-sm badge-outline">${esc(d.model_code)} ${d.usage}</span>`).join("")}</div>`
+      ? `<div class="flex flex-wrap gap-1 mt-1.5">${lim.usage_details.map((d) => `<span class="badge badge-sm badge-soft">${esc(d.model_code)} ${d.usage}</span>`).join("")}</div>`
       : "";
 
     limitsHtml += `
-      <div class="flex items-center gap-3 p-3 rounded-lg bg-base-200/60">
-        ${radialGauge(lim.percentage, 56, 4)}
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between mb-0.5">
-            <span class="text-xs font-semibold">${label}</span>
-            <span class="text-[10px] text-base-content/40">Reset ${resetStr}</span>
+      <div class="card bg-base-100 card-border border-base-300 card-sm">
+        <div class="card-body p-3 gap-2">
+          <div class="flex items-center gap-3">
+            ${radialGauge(lim.percentage, 52, 4)}
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between mb-0.5">
+                <span class="text-xs font-semibold">${label}</span>
+                <span class="text-[10px] opacity-40">Reset ${resetStr}</span>
+              </div>
+              <div class="flex items-baseline gap-1">
+                <span class="text-sm font-bold">${usedStr}</span>
+                ${capStr ? `<span class="text-[10px] opacity-40">/ ${capStr}</span>` : ""}
+              </div>
+              ${remainStr ? `<span class="text-[10px] opacity-40">${remainStr} remaining</span>` : ""}
+            </div>
           </div>
-          <div class="flex items-baseline gap-1">
-            <span class="text-sm font-bold">${usedStr}</span>
-            ${capStr ? `<span class="text-[10px] text-base-content/40">/ ${capStr}</span>` : ""}
-          </div>
-          ${remainStr ? `<span class="text-[10px] text-base-content/40">${remainStr} remaining</span>` : ""}
           ${detailBadges}
         </div>
       </div>`;
   }
 
-  /* ── 24h usage summary ── */
+  /* ── 24h usage summary using DaisyUI stats ── */
   const usageHtml = `
-    <div class="grid grid-cols-2 gap-2 mt-2">
-      <div class="flex flex-col items-center p-3 rounded-lg bg-base-200/60">
-        <span class="stat-value text-lg">${stats.total_model_calls_24h.toLocaleString()}</span>
-        <span class="stat-label">Model calls</span>
-      </div>
-      <div class="flex flex-col items-center p-3 rounded-lg bg-base-200/60">
-        <span class="stat-value text-lg">${formatTokens(stats.total_tokens_24h)}</span>
-        <span class="stat-label">Tokens</span>
+    <div class="card bg-base-100 card-border border-base-300 w-full">
+      <div class="stats bg-base-100 w-full overflow-hidden">
+        <div class="stat py-3 px-4">
+          <div class="stat-title text-[10px]">Model Calls</div>
+          <div class="stat-value text-lg">${stats.total_model_calls_24h.toLocaleString()}</div>
+          <div class="stat-desc opacity-40">24h window</div>
+        </div>
+        <div class="stat py-3 px-4">
+          <div class="stat-title text-[10px]">Tokens</div>
+          <div class="stat-value text-lg">${formatTokens(stats.total_tokens_24h)}</div>
+          <div class="stat-desc opacity-40">24h window</div>
+        </div>
       </div>
     </div>`;
 
   /* ── tool usage ── */
   const totalTools = stats.total_network_search_24h + stats.total_web_read_24h + stats.total_zread_24h + stats.total_search_mcp_24h;
   const toolHtml = totalTools > 0 ? `
-    <div class="mt-2 p-3 rounded-lg bg-base-200/60">
-      <span class="stat-label block mb-2">24h tool usage</span>
-      <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-        <span class="text-base-content/40">Search</span><span class="font-semibold text-right">${stats.total_network_search_24h}</span>
-        <span class="text-base-content/40">Web Read</span><span class="font-semibold text-right">${stats.total_web_read_24h}</span>
-        <span class="text-base-content/40">Zread</span><span class="font-semibold text-right">${stats.total_zread_24h}</span>
-        <span class="text-base-content/40">Search MCP</span><span class="font-semibold text-right">${stats.total_search_mcp_24h}</span>
+    <div class="card bg-base-100 card-border border-base-300 card-sm">
+      <div class="card-body p-3 gap-2">
+        <h2 class="flex items-center gap-2 text-xs font-semibold">
+          <svg class="w-4 h-4 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+          </svg>
+          24h Tool Usage
+        </h2>
+        <div class="flex flex-col text-xs">
+          <div class="border-t-base-content/5 flex items-center justify-between border-t border-dashed py-1.5">
+            <span class="opacity-50">Search</span><span class="badge badge-xs badge-neutral font-mono">${stats.total_network_search_24h}</span>
+          </div>
+          <div class="border-t-base-content/5 flex items-center justify-between border-t border-dashed py-1.5">
+            <span class="opacity-50">Web Read</span><span class="badge badge-xs badge-neutral font-mono">${stats.total_web_read_24h}</span>
+          </div>
+          <div class="border-t-base-content/5 flex items-center justify-between border-t border-dashed py-1.5">
+            <span class="opacity-50">Zread</span><span class="badge badge-xs badge-neutral font-mono">${stats.total_zread_24h}</span>
+          </div>
+          <div class="border-t-base-content/5 flex items-center justify-between border-t border-dashed py-1.5">
+            <span class="opacity-50">Search MCP</span><span class="badge badge-xs badge-neutral font-mono">${stats.total_search_mcp_24h}</span>
+          </div>
+        </div>
       </div>
     </div>` : "";
 
   /* ── level badge ── */
-  const levelBadge = `<div class="flex justify-center mt-2">
-    <span class="badge badge-sm badge-outline text-base-content/40">${esc(stats.level)}</span>
+  const levelBadge = `<div class="flex justify-center mt-1">
+    <span class="badge badge-sm badge-soft opacity-60">${esc(stats.level)}</span>
   </div>`;
 
   tc.innerHTML = `
     ${heroHtml}
     <div class="flex flex-col gap-2">${limitsHtml}</div>
-    ${usageHtml}
-    ${toolHtml}
+    <div class="mt-2">${usageHtml}</div>
+    ${toolHtml ? `<div class="mt-2">${toolHtml}</div>` : ""}
     ${levelBadge}
-    <button class="btn btn-sm btn-ghost btn-block text-base-content/30 mt-1 refresh-stats-btn">Refresh</button>`;
+    <button class="btn btn-sm btn-ghost btn-block opacity-30 mt-1 refresh-stats-btn">Refresh</button>`;
 
   tc.querySelector(".refresh-stats-btn")?.addEventListener("click", () => {
     delete cachedStats[slotNum];
@@ -687,40 +715,50 @@ function renderScheduleTab(tc: HTMLDivElement) {
 
   tc.innerHTML = `
     <form id="schedule-form" class="flex flex-col gap-3">
-      <div class="card bg-base-100 border border-neutral">
-        <div class="card-body p-4 gap-0">
-          <h2 class="card-title text-sm mb-0.5">Wake Schedule</h2>
-          <p class="text-xs text-base-content/50 mb-3">One strategy per key.</p>
-
-          <label class="flex items-center gap-2.5 text-sm cursor-pointer mb-3">
+      <div class="card bg-base-100 card-border border-base-300 card-sm overflow-hidden">
+        <div class="border-base-300 border-b border-dashed">
+          <div class="flex items-center gap-2 p-4">
+            <div class="grow">
+              <div class="flex items-center gap-2 text-sm font-medium">
+                <svg class="w-5 h-5 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                Wake Schedule
+              </div>
+              <p class="text-xs opacity-50 mt-0.5">One strategy per key.</p>
+            </div>
+          </div>
+        </div>
+        <div class="card-body p-4 gap-3">
+          <label class="flex cursor-pointer items-center gap-2.5 text-sm">
             <input id="wake-enabled" type="checkbox" class="toggle toggle-sm toggle-primary" ${s.wake_enabled ? "checked" : ""} />
             Enable wake requests
           </label>
 
-          <label class="text-xs font-medium text-base-content/60 mb-1 block">Wake mode</label>
-          <select id="wake-mode" class="select select-sm w-full mb-3">
+          <label class="text-xs font-medium opacity-60 mb-0.5 block">Wake mode</label>
+          <select id="wake-mode" class="select select-sm select-border w-full">
             <option value="interval" ${s.wake_mode === "interval" ? "selected" : ""}>Every N minutes</option>
             <option value="times" ${s.wake_mode === "times" ? "selected" : ""}>Specific times each day</option>
             <option value="after_reset" ${s.wake_mode === "after_reset" ? "selected" : ""}>After reset + offset</option>
           </select>
 
           <div id="wake-interval-wrap" class="${intervalCls}">
-            <label class="text-xs font-medium text-base-content/60 mb-1 block">Wake every (minutes)</label>
-            <input id="wake-interval" type="number" class="input input-sm w-full" min="1" step="1" value="${s.wake_interval_minutes}" />
+            <label class="text-xs font-medium opacity-60 mb-1 block">Wake every (minutes)</label>
+            <input id="wake-interval" type="number" class="input input-sm input-border w-full" min="1" step="1" value="${s.wake_interval_minutes}" />
           </div>
           <div id="wake-times-wrap" class="${timesCls}">
-            <p class="text-xs text-base-content/50 mb-2">Up to 5 times, 24h HH:MM.</p>
+            <p class="text-xs opacity-50 mb-2">Up to 5 times, 24h HH:MM.</p>
             <div class="grid grid-cols-3 gap-1.5">
-              <input class="input input-sm wake-time" data-index="0" type="text" placeholder="08:30" value="${esc(times[0])}" />
-              <input class="input input-sm wake-time" data-index="1" type="text" placeholder="12:00" value="${esc(times[1])}" />
-              <input class="input input-sm wake-time" data-index="2" type="text" placeholder="15:30" value="${esc(times[2])}" />
-              <input class="input input-sm wake-time" data-index="3" type="text" placeholder="18:00" value="${esc(times[3])}" />
-              <input class="input input-sm wake-time" data-index="4" type="text" placeholder="22:15" value="${esc(times[4])}" />
+              <input class="input input-sm input-border wake-time" data-index="0" type="text" placeholder="08:30" value="${esc(times[0])}" />
+              <input class="input input-sm input-border wake-time" data-index="1" type="text" placeholder="12:00" value="${esc(times[1])}" />
+              <input class="input input-sm input-border wake-time" data-index="2" type="text" placeholder="15:30" value="${esc(times[2])}" />
+              <input class="input input-sm input-border wake-time" data-index="3" type="text" placeholder="18:00" value="${esc(times[3])}" />
+              <input class="input input-sm input-border wake-time" data-index="4" type="text" placeholder="22:15" value="${esc(times[4])}" />
             </div>
           </div>
           <div id="wake-after-reset-wrap" class="${resetCls}">
-            <label class="text-xs font-medium text-base-content/60 mb-1 block">Minutes after reset</label>
-            <input id="wake-after-reset" type="number" class="input input-sm w-full" min="1" step="1" value="${s.wake_after_reset_minutes}" />
+            <label class="text-xs font-medium opacity-60 mb-1 block">Minutes after reset</label>
+            <input id="wake-after-reset" type="number" class="input input-sm input-border w-full" min="1" step="1" value="${s.wake_after_reset_minutes}" />
           </div>
         </div>
       </div>
@@ -773,40 +811,48 @@ function renderSettingsTab(tc: HTMLDivElement) {
 
   tc.innerHTML = `
     <form id="settings-form" class="flex flex-col gap-3">
-      <div class="card bg-base-100 border border-neutral">
-        <div class="card-body p-4 gap-0">
-          <h2 class="card-title text-sm mb-0.5">Configuration</h2>
-          <p class="text-xs text-base-content/50 mb-3">Credentials and polling settings.</p>
-
-          <label class="text-xs font-medium text-base-content/60 mb-1 block">Name</label>
-          <input id="slot-name" type="text" class="input input-sm w-full mb-2.5" value="${esc(s.name)}" placeholder="e.g. Production" />
-
-          <label class="text-xs font-medium text-base-content/60 mb-1.5 block">API Key</label>
-          <input id="api-key" type="password" class="input input-sm w-full mb-3" value="${esc(s.api_key)}" placeholder="Bearer ..." autocomplete="off" />
-
-          <label class="text-xs font-medium text-base-content/60 mb-1.5 block">Platform</label>
-          <div class="join w-full mb-3">
-            <input class="join-item btn btn-sm flex-1" type="radio" name="platform" aria-label="Z.ai" value="zai" ${platform === "zai" ? "checked" : ""} />
-            <input class="join-item btn btn-sm flex-1" type="radio" name="platform" aria-label="BigModel" value="bigmodel" ${platform === "bigmodel" ? "checked" : ""} />
+      <div class="card bg-base-100 card-border border-base-300 card-sm">
+        <div class="card-body p-4 gap-3">
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-medium opacity-60">Name</label>
+            <input id="slot-name" type="text" class="input input-sm input-border w-full" value="${esc(s.name)}" placeholder="e.g. Production" />
           </div>
 
-          <label class="text-xs font-medium text-base-content/60 mb-1 block">Poll interval (minutes)</label>
-          <input id="poll-interval" type="number" class="input input-sm w-full mb-3" min="1" step="1" value="${s.poll_interval_minutes}" />
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-medium opacity-60">API Key</label>
+            <input id="api-key" type="password" class="input input-sm input-border w-full" value="${esc(s.api_key)}" placeholder="Bearer ..." autocomplete="off" />
+          </div>
 
-          <div class="flex flex-col gap-2.5">
-            <label class="flex items-center gap-2.5 text-sm cursor-pointer">
-              <input id="enabled" type="checkbox" class="toggle toggle-sm toggle-primary" ${s.enabled ? "checked" : ""} />
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-medium opacity-60">Platform</label>
+            <div class="join w-full">
+              <input class="join-item btn btn-sm flex-1" type="radio" name="platform" aria-label="Z.ai" value="zai" ${platform === "zai" ? "checked" : ""} />
+              <input class="join-item btn btn-sm flex-1" type="radio" name="platform" aria-label="BigModel" value="bigmodel" ${platform === "bigmodel" ? "checked" : ""} />
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-medium opacity-60">Poll interval (minutes)</label>
+            <input id="poll-interval" type="number" class="input input-sm input-border w-full" min="1" step="1" value="${s.poll_interval_minutes}" />
+          </div>
+
+          <div class="flex gap-4 mt-1">
+            <label class="flex cursor-pointer items-center gap-2 text-xs">
+              <input id="enabled" type="checkbox" class="toggle toggle-xs toggle-primary" ${s.enabled ? "checked" : ""} />
               Enable polling
             </label>
-            <label class="flex items-center gap-2.5 text-sm cursor-pointer">
-              <input id="logging" type="checkbox" class="toggle toggle-sm toggle-primary" ${s.logging ? "checked" : ""} />
-              Log requests &amp; responses
+            <label class="flex cursor-pointer items-center gap-2 text-xs">
+              <input id="logging" type="checkbox" class="toggle toggle-xs toggle-primary" ${s.logging ? "checked" : ""} />
+              Logging
             </label>
           </div>
         </div>
       </div>
 
-      <button type="submit" class="btn btn-primary btn-block">Save Settings</button>
+      <div class="card-actions grid grid-cols-2 gap-2">
+        <button type="button" class="btn btn-sm" id="delete-slot-btn">Reset Slot</button>
+        <button type="submit" class="btn btn-primary btn-sm">Save</button>
+      </div>
       <p id="form-error" class="text-error font-semibold text-sm text-center" hidden></p>
     </form>`;
 
@@ -832,6 +878,15 @@ function renderSettingsTab(tc: HTMLDivElement) {
       configState = await backendInvoke<AppConfig>("save_settings", { settings: configState });
       render();
     });
+
+  document.getElementById("delete-slot-btn")?.addEventListener("click", async () => {
+    const n = slotByView(currentView);
+    const def = defaultSlot(n.slot);
+    Object.assign(n, def);
+    configState = await backendInvoke<AppConfig>("save_settings", { settings: configState });
+    currentView = "dashboard";
+    render();
+  });
 }
 
 /* ======== Render Orchestrator ======== */
@@ -846,14 +901,18 @@ function render() {
 }
 
 function syncButtons(monitoring: boolean) {
-  const start = document.getElementById(
-    "start-btn",
-  ) as HTMLButtonElement | null;
-  const stop = document.getElementById(
-    "stop-btn",
-  ) as HTMLButtonElement | null;
-  if (start) start.disabled = monitoring;
-  if (stop) stop.disabled = !monitoring;
+  const btn = document.getElementById("monitor-btn") as HTMLButtonElement | null;
+  if (!btn) return;
+  btn.disabled = false;
+  if (monitoring) {
+    btn.title = "Stop monitoring";
+    btn.className = "btn btn-sm btn-square btn-error";
+    btn.innerHTML = `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`;
+  } else {
+    btn.title = "Start monitoring";
+    btn.className = "btn btn-sm btn-square btn-outline";
+    btn.innerHTML = `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+  }
 }
 
 async function refreshRuntimeStatus() {
@@ -871,37 +930,29 @@ async function refreshRuntimeStatus() {
 window.addEventListener("DOMContentLoaded", async () => {
   createSidebar();
   configState = await backendInvoke<AppConfig>("load_settings");
-  applyTheme(configState.theme ?? "glm");
+  applyTheme();
   render();
 
-  const startBtn = document.getElementById(
-    "start-btn",
-  ) as HTMLButtonElement;
-  const stopBtn = document.getElementById("stop-btn") as HTMLButtonElement;
-  startBtn.disabled = true;
-  stopBtn.disabled = true;
+  const monBtn = document.getElementById("monitor-btn") as HTMLButtonElement;
+  monBtn.disabled = true;
 
-  startBtn.addEventListener("click", async () => {
-    startBtn.disabled = true;
-    await backendInvoke("start_monitoring");
+  monBtn.addEventListener("click", async () => {
+    monBtn.disabled = true;
+    const isMonitoring = latestRuntime?.monitoring ?? false;
+    await backendInvoke(isMonitoring ? "stop_monitoring" : "start_monitoring");
     await refreshRuntimeStatus();
-  });
-
-  stopBtn.addEventListener("click", async () => {
-    stopBtn.disabled = true;
-    await backendInvoke("stop_monitoring");
-    await refreshRuntimeStatus();
-  });
-
-  document.getElementById("theme-btn")?.addEventListener("click", async () => {
-    if (!configState) return;
-    configState.theme = configState.theme === "business" ? "glm" : "business";
-    applyTheme(configState.theme);
-    configState = await backendInvoke<AppConfig>("save_settings", { settings: configState });
   });
 
   document.getElementById("warmup-btn")?.addEventListener("click", async () => {
-    await backendInvoke("warmup_all");
+    const warmupBtn = document.getElementById("warmup-btn") as HTMLButtonElement;
+    warmupBtn.classList.add("warming-up");
+    warmupBtn.disabled = true;
+    try {
+      await backendInvoke("warmup_all");
+    } finally {
+      warmupBtn.classList.remove("warming-up");
+      warmupBtn.disabled = false;
+    }
   });
 
   document.querySelector(".sidebar-logo-link")?.addEventListener("click", async (e) => {
