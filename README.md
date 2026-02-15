@@ -16,7 +16,7 @@ A cross-platform system tray utility for monitoring Z.ai/BigModel API key quota 
 
 ## Screenshots
 
-![Stats View](images/screenshot.jpg)
+<img src="docs/images/screenshot.jpg" width="50%" alt="Stats View">
 
 ## Building
 
