@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const MAX_SLOTS: usize = 4;
+pub const CURRENT_CONFIG_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -59,6 +60,8 @@ impl Default for KeySlotConfig {
 pub struct AppConfig {
     pub slots: Vec<KeySlotConfig>,
     pub theme: String,
+    #[serde(default)]
+    pub config_version: u32,
 }
 
 impl Default for AppConfig {
@@ -69,7 +72,7 @@ impl Default for AppConfig {
             slot.slot = idx + 1;
             slots.push(slot);
         }
-        Self { slots, theme: "glm".to_string() }
+        Self { slots, theme: "glm".to_string(), config_version: CURRENT_CONFIG_VERSION }
     }
 }
 

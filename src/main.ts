@@ -547,9 +547,18 @@ async function loadStats(slotNum: number) {
     console.warn("stats fetch failed:", err);
   } finally {
     statsLoading = false;
-    if (currentView === String(slotNum) && currentKeyTab === "stats") {
-      const tc = document.getElementById("tab-content") as HTMLDivElement | null;
-      if (tc) renderStatsTab(tc);
+    if (currentView === String(slotNum)) {
+      // Update header title with level badge after stats load
+      const titleEl = document.getElementById("page-title") as HTMLHeadingElement | null;
+      const s = slotByView(currentView);
+      const stats = cachedStats[slotNum];
+      const levelHtml = stats?.level ? ` <span class="badge badge-sm badge-soft opacity-50 ml-1 align-middle">${esc(stats.level)}</span>` : "";
+      if (titleEl) titleEl.innerHTML = `${esc(s.name || `Key ${slotNum}`)}${levelHtml}`;
+      // Re-render stats tab if active
+      if (currentKeyTab === "stats") {
+        const tc = document.getElementById("tab-content") as HTMLDivElement | null;
+        if (tc) renderStatsTab(tc);
+      }
     }
   }
 }
