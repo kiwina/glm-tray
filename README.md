@@ -1,175 +1,145 @@
-# GLM Tray Quota Monitor (Tauri v2)
+# GLM Tray
 
-Cross-platform system tray utility for monitoring API key quota usage (up to 5 independent key slots).
+A cross-platform system tray utility for monitoring Z.ai/BigModel API key quota usage and keeping keys warm.
 
-## Folder Structure
-
-```text
-index.html
-src/
-	main.ts
-	styles.css
-src-tauri/
-	Cargo.toml
-	tauri.conf.json
-	src/
-		main.rs
-		lib.rs
-		models.rs
-		config.rs
-		api_client.rs
-		scheduler.rs
-		tray.rs
-.github/workflows/
-	ci.yml
-```
+![Tauri](https://img.shields.io/badge/Tauri-v2-blue)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
 ## Features
 
-- Tray-first app behavior (hidden at launch)
-- Dynamic tray tooltip per active key slot (`k1..k5`)
-- Per-slot scheduler task (Tokio async, safe cancellation)
-- Optional warmup request before polling loop
-- Config persistence (JSON)
-- Runtime status query from frontend
-- Minimal HTML + TypeScript frontend (no heavy UI framework)
+- **Quota Monitoring** — Track token and request limits for up to 4 API keys
+- **Keep-Alive Warmup** — Prevent keys from going stale with scheduled wake requests
+- **Flexible Scheduling** — Wake by interval, at specific times, or after quota reset
+- **System Tray** — Minimal UI, lives in your tray with status indicators
+- **Detailed Stats** — View usage limits, model calls, and token consumption (24h window)
+- **JSONL Logging** — Optional request/response logging for debugging
 
-## Backend Architecture
+## Screenshots
 
-- `main.rs`: native entrypoint
-- `lib.rs`: Tauri setup, global state, command registration
-- `tray.rs`: tray initialization, icon/tooltip refresh, menu + click behavior
-- `scheduler.rs`: async polling manager and per-key loop lifecycle
-- `config.rs`: load/save normalized JSON config (enforces max 5 slots)
-- `api_client.rs`: HTTP request/warmup/quota parsing logic
-- `models.rs`: strong data model for config/runtime/API responses
+![Stats View](images/screenshot.jpg)
 
-## API Parsing Behavior
+## Building
 
-For each quota response:
+### Prerequisites
 
-- Reads `data.limits`
-- Uses `TOKENS_LIMIT` when present, otherwise first available limit
-- Extracts `percentage`
-- Converts `nextResetTime` (ms epoch) to local `HH:MM:SS`
-
-## Command Surface
-
-Frontend uses Tauri `invoke()` for:
-
-- `load_settings`
-- `save_settings`
-- `start_monitoring`
-- `stop_monitoring`
-- `get_runtime_status`
-
-## Environment Validation
+- [Rust](https://rustup.rs/) (1.70+)
+- [Node.js](https://nodejs.org/) (18+) or [Bun](https://bun.sh/)
+- Platform-specific dependencies (see below)
 
 ### Linux
 
 ```bash
-rustc --version
-cargo --version
-node --version
-npm --version
-npx tauri --version
-
-sudo apt-get update
 sudo apt-get install -y \
-	libwebkit2gtk-4.1-dev \
-	libappindicator3-dev \
-	librsvg2-dev \
-	patchelf
+  libwebkit2gtk-4.1-dev \
+  libappindicator3-dev \
+  librsvg2-dev \
+  patchelf
 ```
 
 ### macOS
 
 ```bash
-rustc --version
-cargo --version
-node --version
-npm --version
-npx tauri --version
-
-xcode-select -p
-```
-
-Install Xcode Command Line Tools when needed:
-
-```bash
 xcode-select --install
 ```
 
-### Windows (PowerShell)
-
-```powershell
-rustc --version
-cargo --version
-node --version
-npm --version
-npx tauri --version
-```
-
-Required tools:
+### Windows
 
 - Visual Studio Build Tools (Desktop development with C++)
-- WebView2 Runtime
+- WebView2 Runtime (usually pre-installed)
 
-## Setup
-
-```bash
-npm ci
-npm run tauri dev
-```
-
-## Build & Packaging
-
-### Debug build
+### Development
 
 ```bash
-npm run tauri build -- --debug
+# Install dependencies
+bun install   # or npm ci
+
+# Run in development mode
+bun run tauri dev
 ```
 
-### Optimized release build
+### Production Build
 
 ```bash
-npm run tauri build
+# Build for current platform
+bun run tauri build
+
+# Cross-compile for Windows (from Linux)
+bun run tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
 ```
 
-Release profile optimizations are configured in `src-tauri/Cargo.toml`:
+The built installer will be in `src-tauri/target/release/bundle/`.
 
-- `lto = true`
-- `codegen-units = 1`
-- `opt-level = "z"`
-- `strip = true`
+## Configuration
 
-### Binary Size Reduction Tips
+Configuration is stored in the platform's application data directory:
 
-- Keep `reqwest` features minimal (`json`, `rustls-tls` only)
-- Avoid UI/framework dependencies in frontend
-- Prefer static/simple tray icon assets
-- Remove unused plugins and capabilities
+| Platform | Path |
+|----------|------|
+| Windows | `%APPDATA%\glm-tray\config.json` |
+| macOS | `~/Library/Application Support/glm-tray/config.json` |
+| Linux | `~/.config/glm-tray/config.json` |
 
-## CI
+### Per-Slot Settings
 
-GitHub Actions workflow in `.github/workflows/ci.yml`:
+- **Name** — Display label for the key
+- **API Key** — Your Z.ai or BigModel API key
+- **Quota URL** — Endpoint for quota monitoring
+- **Request URL** — Endpoint for warmup requests
+- **Wake Mode** — `Interval`, `Times`, or `AfterReset`
+- **Logging** — Enable JSONL request/response logging
 
-- Builds on Ubuntu, Windows, and macOS
-- Caches Rust and Node dependencies
-- Uploads release binaries as artifacts
+## Architecture
 
-## Runtime Notes
+```
+src/
+  main.ts          # Frontend logic (vanilla TS)
+  styles.css       # DaisyUI + Tailwind CSS 4
 
-- Closing settings window hides it (does not quit)
-- Tray menu supports Open Settings / Start / Stop / Quit
-- Monitoring restarts automatically after settings save when already running
-- Scheduler prevents duplicate loops by stopping existing tasks before restart
+src-tauri/
+  src/
+    lib.rs         # Tauri setup, commands, state
+    config.rs      # Config load/save with migration
+    api_client.rs  # HTTP client for all API calls
+    scheduler.rs   # Background polling scheduler
+    tray.rs        # System tray management
+    models.rs      # Data structures
+    file_logger.rs # JSONL logging module
+```
 
-## Extension Guide
+## API Endpoints
 
-Potential future additions:
+| Purpose | URL |
+|---------|-----|
+| Quota Limits | `https://api.z.ai/api/monitor/usage/quota/limit` |
+| Model Usage | `https://api.z.ai/api/monitor/usage/model-usage` |
+| Tool Usage | `https://api.z.ai/api/monitor/usage/tool-usage` |
+| Chat Completions | `https://api.z.ai/api/coding/paas/v4/chat/completions` |
 
-- Per-slot custom headers
-- TLS pinning or proxy support
-- Retry/backoff policy per slot
-- Detailed history chart in settings window
+For BigModel, replace `api.z.ai` with `open.bigmodel.cn`.
+
+## Logs
+
+When logging is enabled, requests and responses are written to daily JSONL files:
+
+```
+{app_data_dir}/logs/2024-01-15.jsonl
+```
+
+Each entry includes:
+- Timestamp, slot number, action type
+- Request method, URL, body
+- Response status, body, error (if any)
+
+## License
+
+MIT
+
+---
+
+## Disclaimer
+
+**This software is not affiliated with, endorsed by, or sponsored by Z.ai, BigModel, or any of their subsidiaries.**
+
+"Z.ai" and "BigModel" are trademarks of their respective owners. This is an independent, community-developed tool for personal API key management. Use at your own risk.
+
+The software is provided "as is", without warranty of any kind, express or implied. The authors are not liable for any damages arising from the use of this software.
