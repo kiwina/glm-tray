@@ -73,7 +73,7 @@ impl SchedulerManager {
                 let mut last_interval_fire = Instant::now();
                 let mut consecutive_errors: u32 = 0;
 
-                let client = match ApiClient::new() {
+                let client = match ApiClient::new(Some(app_handle.clone())) {
                     Ok(client) => client,
                     Err(err) => {
                         warn!("slot {} client setup failed: {}", idx + 1, err);

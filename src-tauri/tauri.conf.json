@@ -30,7 +30,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "category": "Utility",
     "shortDescription": "System tray quota monitor for GLM API keys",
     "longDescription": "A lightweight system tray application that monitors API key quota usage with configurable polling, wake scheduling, exponential backoff, and multi-key support.",

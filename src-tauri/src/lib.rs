@@ -1,5 +1,6 @@
 mod api_client;
 mod config;
+mod file_logger;
 mod models;
 mod scheduler;
 mod tray;
@@ -75,14 +76,14 @@ async fn warmup_all(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn fetch_slot_stats(state: tauri::State<'_, SharedState>, slot: usize) -> Result<SlotStats, String> {
+async fn fetch_slot_stats(app: tauri::AppHandle, state: tauri::State<'_, SharedState>, slot: usize) -> Result<SlotStats, String> {
     let config = state.config.read().await;
     let slot_cfg = config.slots.iter().find(|s| s.slot == slot)
         .ok_or_else(|| format!("slot {slot} not found"))?;
     if slot_cfg.api_key.trim().is_empty() {
         return Err("no API key configured".into());
     }
-    let client = api_client::ApiClient::new()?;
+    let client = api_client::ApiClient::new(Some(app))?;
     client.fetch_slot_stats(slot_cfg).await
 }
 
@@ -113,7 +114,7 @@ pub async fn warmup_all_internal(app: tauri::AppHandle) -> Result<(), String> {
     info!("warmup all keys requested");
     let state = app.state::<SharedState>();
     let config = state.config.read().await.clone();
-    let client = api_client::ApiClient::new()?;
+    let client = api_client::ApiClient::new(Some(app.clone()))?;
 
     for slot_cfg in &config.slots {
         if !slot_cfg.enabled || slot_cfg.api_key.trim().is_empty() {

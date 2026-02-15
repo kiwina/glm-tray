@@ -463,8 +463,10 @@ function renderKeyDetailShell() {
   const s = slotByView(currentView);
   const hasKey = s.api_key.trim().length > 0;
   const root = document.getElementById("content-area") as HTMLDivElement;
-  (document.getElementById("page-title") as HTMLHeadingElement).textContent =
-    s.name || `Key ${slotNum}`;
+  const titleEl = document.getElementById("page-title") as HTMLHeadingElement;
+  const stats = cachedStats[slotNum];
+  const levelHtml = stats?.level ? ` <span class="badge badge-sm badge-soft opacity-50 ml-1 align-middle">${esc(stats.level)}</span>` : "";
+  titleEl.innerHTML = `${esc(s.name || `Key ${slotNum}`)}${levelHtml}`;
 
   // Force settings tab when no API key is configured
   if (!hasKey && currentKeyTab !== "settings") {
@@ -502,6 +504,7 @@ function renderKeyDetailShell() {
   document.querySelectorAll<HTMLButtonElement>("#key-dock button:not([disabled])").forEach((btn) => {
     btn.addEventListener("click", () => {
       currentKeyTab = btn.dataset.tab as KeyTab;
+      _scheduleSavedSnapshot = null; // reset schedule dirty tracking on tab switch
       renderKeyDetailShell();
     });
   });
@@ -606,96 +609,55 @@ function renderStatsTab(tc: HTMLDivElement) {
   }
 
   /* ── limits ── */
-  let limitsHtml = "";
+  /* ── limits (side-by-side) ── */
+  let limitsCards: string[] = [];
   for (const lim of stats.limits) {
     const label = lim.type_name === "TOKENS_LIMIT" ? "Tokens" : "Requests";
     const resetStr = lim.next_reset_hms ?? "\u2014";
     const usedStr = lim.current_value != null ? formatTokens(lim.current_value) : "\u2014";
     const capStr = lim.usage != null ? formatTokens(lim.usage) : "";
-    const remainStr = lim.remaining != null ? formatTokens(lim.remaining) : "";
+    // remaining logic kept for future use
+    const _remainStr = lim.remaining != null ? formatTokens(lim.remaining) : "";
+    void _remainStr;
 
-    const detailBadges = lim.usage_details.length > 0
-      ? `<div class="flex flex-wrap gap-1 mt-1.5">${lim.usage_details.map((d) => `<span class="badge badge-sm badge-soft">${esc(d.model_code)} ${d.usage}</span>`).join("")}</div>`
-      : "";
-
-    limitsHtml += `
-      <div class="card bg-base-100 card-border border-base-300 card-sm">
-        <div class="card-body p-3 gap-2">
-          <div class="flex items-center gap-3">
-            ${radialGauge(lim.percentage, 52, 4)}
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center justify-between mb-0.5">
-                <span class="text-xs font-semibold">${label}</span>
-                <span class="text-[10px] opacity-40">Reset ${resetStr}</span>
-              </div>
-              <div class="flex items-baseline gap-1">
-                <span class="text-sm font-bold">${usedStr}</span>
-                ${capStr ? `<span class="text-[10px] opacity-40">/ ${capStr}</span>` : ""}
-              </div>
-              ${remainStr ? `<span class="text-[10px] opacity-40">${remainStr} remaining</span>` : ""}
-            </div>
+    limitsCards.push(`
+      <div class="card bg-base-100 card-border border-base-300 card-sm flex-1 min-w-0">
+        <div class="card-body p-3 gap-1 items-center">
+          ${radialGauge(lim.percentage, 48, 4)}
+          <span class="text-xs font-semibold mt-1">${label}</span>
+          <div class="flex items-baseline gap-1">
+            <span class="text-sm font-bold">${usedStr}</span>
+            ${capStr ? `<span class="text-[10px] opacity-40">/ ${capStr}</span>` : ""}
           </div>
-          ${detailBadges}
+          <span class="text-[10px] opacity-30">Reset ${resetStr}</span>
         </div>
-      </div>`;
+      </div>`);
   }
+  const limitsHtml = `<div class="flex gap-2">${limitsCards.join("")}</div>`;
 
   /* ── 24h usage summary using DaisyUI stats ── */
   const usageHtml = `
     <div class="card bg-base-100 card-border border-base-300 w-full">
       <div class="stats bg-base-100 w-full overflow-hidden">
-        <div class="stat py-3 px-4">
-          <div class="stat-title text-[10px]">Model Calls</div>
-          <div class="stat-value text-lg">${stats.total_model_calls_24h.toLocaleString()}</div>
-          <div class="stat-desc opacity-40">24h window</div>
+        <div class="stat py-3 px-4 flex flex-col items-center justify-center">
+          <div class="stat-title text-[10px] text-center">Model Calls</div>
+          <div class="stat-value text-lg text-center">${stats.total_model_calls_24h.toLocaleString()}</div>
+          <div class="stat-desc opacity-40 text-center">24h window</div>
         </div>
-        <div class="stat py-3 px-4">
-          <div class="stat-title text-[10px]">Tokens</div>
-          <div class="stat-value text-lg">${formatTokens(stats.total_tokens_24h)}</div>
-          <div class="stat-desc opacity-40">24h window</div>
+        <div class="stat py-3 px-4 flex flex-col items-center justify-center">
+          <div class="stat-title text-[10px] text-center">Tokens</div>
+          <div class="stat-value text-lg text-center">${formatTokens(stats.total_tokens_24h)}</div>
+          <div class="stat-desc opacity-40 text-center">24h window</div>
         </div>
       </div>
     </div>`;
 
-  /* ── tool usage ── */
-  const totalTools = stats.total_network_search_24h + stats.total_web_read_24h + stats.total_zread_24h + stats.total_search_mcp_24h;
-  const toolHtml = totalTools > 0 ? `
-    <div class="card bg-base-100 card-border border-base-300 card-sm">
-      <div class="card-body p-3 gap-2">
-        <h2 class="flex items-center gap-2 text-xs font-semibold">
-          <svg class="w-4 h-4 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-          </svg>
-          24h Tool Usage
-        </h2>
-        <div class="flex flex-col text-xs">
-          <div class="border-t-base-content/5 flex items-center justify-between border-t border-dashed py-1.5">
-            <span class="opacity-50">Search</span><span class="badge badge-xs badge-neutral font-mono">${stats.total_network_search_24h}</span>
-          </div>
-          <div class="border-t-base-content/5 flex items-center justify-between border-t border-dashed py-1.5">
-            <span class="opacity-50">Web Read</span><span class="badge badge-xs badge-neutral font-mono">${stats.total_web_read_24h}</span>
-          </div>
-          <div class="border-t-base-content/5 flex items-center justify-between border-t border-dashed py-1.5">
-            <span class="opacity-50">Zread</span><span class="badge badge-xs badge-neutral font-mono">${stats.total_zread_24h}</span>
-          </div>
-          <div class="border-t-base-content/5 flex items-center justify-between border-t border-dashed py-1.5">
-            <span class="opacity-50">Search MCP</span><span class="badge badge-xs badge-neutral font-mono">${stats.total_search_mcp_24h}</span>
-          </div>
-        </div>
-      </div>
-    </div>` : "";
-
-  /* ── level badge ── */
-  const levelBadge = `<div class="flex justify-center mt-1">
-    <span class="badge badge-sm badge-soft opacity-60">${esc(stats.level)}</span>
-  </div>`;
+  /* ── tool usage removed ── */
 
   tc.innerHTML = `
     ${heroHtml}
-    <div class="flex flex-col gap-2">${limitsHtml}</div>
-    <div class="mt-2">${usageHtml}</div>
-    ${toolHtml ? `<div class="mt-2">${toolHtml}</div>` : ""}
-    ${levelBadge}
+    <div class="mt-0">${usageHtml}</div>
+    <div class="mt-2">${limitsHtml}</div>
     <button class="btn btn-sm btn-ghost btn-block opacity-30 mt-1 refresh-stats-btn">Refresh</button>`;
 
   tc.querySelector(".refresh-stats-btn")?.addEventListener("click", () => {
@@ -706,12 +668,32 @@ function renderStatsTab(tc: HTMLDivElement) {
 
 /* ======== Schedule Tab ======== */
 
-function renderScheduleTab(tc: HTMLDivElement) {
+let _scheduleSavedSnapshot: {
+  wake_enabled: boolean;
+  wake_mode: WakeMode;
+  wake_interval_minutes: number;
+  wake_after_reset_minutes: number;
+  wake_times: string[];
+} | null = null;
+
+function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false) {
   const s = slotByView(currentView);
   const times = [0, 1, 2, 3, 4].map((i) => s.wake_times[i] ?? "");
   const intervalCls = s.wake_mode === "interval" ? "" : "hidden";
   const timesCls = s.wake_mode === "times" ? "" : "hidden";
   const resetCls = s.wake_mode === "after_reset" ? "" : "hidden";
+
+  // Only snapshot the "saved" state on first render (not wake-mode toggles)
+  if (!preserveSnapshot || !_scheduleSavedSnapshot) {
+    _scheduleSavedSnapshot = {
+      wake_enabled: s.wake_enabled,
+      wake_mode: s.wake_mode,
+      wake_interval_minutes: s.wake_interval_minutes,
+      wake_after_reset_minutes: s.wake_after_reset_minutes,
+      wake_times: [...s.wake_times],
+    };
+  }
+  const snapshot = _scheduleSavedSnapshot;
 
   tc.innerHTML = `
     <form id="schedule-form" class="flex flex-col gap-3">
@@ -763,14 +745,48 @@ function renderScheduleTab(tc: HTMLDivElement) {
         </div>
       </div>
 
-      <button type="submit" class="btn btn-primary btn-block">Save Schedule</button>
+      <button type="submit" class="btn btn-primary btn-block hidden" id="schedule-save-btn">Save Schedule</button>
+      <p id="schedule-toast" class="text-success text-xs text-center font-medium hidden">Schedule saved</p>
       <p id="form-error" class="text-error font-semibold text-sm text-center" hidden></p>
     </form>`;
+
+  const form = document.getElementById("schedule-form") as HTMLFormElement;
+  const saveBtn = document.getElementById("schedule-save-btn") as HTMLButtonElement;
+
+  function getFormTimes(): string[] {
+    return Array.from(document.querySelectorAll<HTMLInputElement>(".wake-time"))
+      .map((el) => el.value.trim())
+      .filter((v) => v.length > 0)
+      .slice(0, 5);
+  }
+
+  function isScheduleDirty(): boolean {
+    const wakeEnabled = (document.getElementById("wake-enabled") as HTMLInputElement).checked;
+    const wakeMode = (document.getElementById("wake-mode") as HTMLSelectElement).value as WakeMode;
+    const interval = Math.max(1, Number((document.getElementById("wake-interval") as HTMLInputElement).value) || 1);
+    const afterReset = Math.max(1, Number((document.getElementById("wake-after-reset") as HTMLInputElement).value) || 1);
+    const times = getFormTimes();
+
+    return wakeEnabled !== snapshot.wake_enabled
+      || wakeMode !== snapshot.wake_mode
+      || interval !== snapshot.wake_interval_minutes
+      || afterReset !== snapshot.wake_after_reset_minutes
+      || times.join(",") !== snapshot.wake_times.join(",");
+  }
+
+  function checkDirty() {
+    saveBtn.classList.toggle("hidden", !isScheduleDirty());
+  }
+
+  form.querySelectorAll("input, select").forEach((el) => {
+    el.addEventListener("input", checkDirty);
+    el.addEventListener("change", checkDirty);
+  });
 
   (document.getElementById("wake-mode") as HTMLSelectElement)
     .addEventListener("change", (e) => {
       slotByView(currentView).wake_mode = (e.target as HTMLSelectElement).value as WakeMode;
-      renderScheduleTab(tc);
+      renderScheduleTab(tc, true);
     });
 
   (document.getElementById("schedule-form") as HTMLFormElement)
@@ -799,6 +815,22 @@ function renderScheduleTab(tc: HTMLDivElement) {
       n.wake_times = wakeTimes;
 
       configState = await backendInvoke<AppConfig>("save_settings", { settings: configState });
+
+      // Flash success toast
+      const toast = document.getElementById("schedule-toast") as HTMLParagraphElement;
+      toast.classList.remove("hidden");
+      saveBtn.classList.add("hidden");
+      setTimeout(() => toast.classList.add("hidden"), 1500);
+
+      // Update saved snapshot
+      _scheduleSavedSnapshot = {
+        wake_enabled: n.wake_enabled,
+        wake_mode: n.wake_mode,
+        wake_interval_minutes: n.wake_interval_minutes,
+        wake_after_reset_minutes: n.wake_after_reset_minutes,
+        wake_times: [...n.wake_times],
+      };
+
       render();
     });
 }
@@ -808,6 +840,16 @@ function renderScheduleTab(tc: HTMLDivElement) {
 function renderSettingsTab(tc: HTMLDivElement) {
   const s = slotByView(currentView);
   const platform = detectPlatform(s.quota_url);
+
+  // Snapshot for dirty-tracking
+  const snapshot = {
+    name: s.name,
+    api_key: s.api_key,
+    platform,
+    poll_interval_minutes: s.poll_interval_minutes,
+    enabled: s.enabled,
+    logging: s.logging,
+  };
 
   tc.innerHTML = `
     <form id="settings-form" class="flex flex-col gap-3">
@@ -851,13 +893,41 @@ function renderSettingsTab(tc: HTMLDivElement) {
 
       <div class="card-actions grid grid-cols-2 gap-2">
         <button type="button" class="btn btn-sm" id="delete-slot-btn">Reset Slot</button>
-        <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        <button type="submit" class="btn btn-primary btn-sm hidden" id="settings-save-btn">Save</button>
       </div>
+      <p id="save-toast" class="text-success text-xs text-center font-medium hidden">Settings saved</p>
       <p id="form-error" class="text-error font-semibold text-sm text-center" hidden></p>
     </form>`;
 
-  (document.getElementById("settings-form") as HTMLFormElement)
-    .addEventListener("submit", async (e) => {
+  const form = document.getElementById("settings-form") as HTMLFormElement;
+  const saveBtn = document.getElementById("settings-save-btn") as HTMLButtonElement;
+
+  function isSettingsDirty(): boolean {
+    const name = (document.getElementById("slot-name") as HTMLInputElement).value.trim();
+    const apiKey = (document.getElementById("api-key") as HTMLInputElement).value.trim();
+    const plat = (document.querySelector<HTMLInputElement>('input[name="platform"]:checked')?.value ?? "zai") as Platform;
+    const poll = Math.max(1, Number((document.getElementById("poll-interval") as HTMLInputElement).value) || 30);
+    const enabled = (document.getElementById("enabled") as HTMLInputElement).checked;
+    const logging = (document.getElementById("logging") as HTMLInputElement).checked;
+
+    return name !== snapshot.name
+      || apiKey !== snapshot.api_key
+      || plat !== snapshot.platform
+      || poll !== snapshot.poll_interval_minutes
+      || enabled !== snapshot.enabled
+      || logging !== snapshot.logging;
+  }
+
+  function checkDirty() {
+    saveBtn.classList.toggle("hidden", !isSettingsDirty());
+  }
+
+  form.querySelectorAll("input").forEach((el) => {
+    el.addEventListener("input", checkDirty);
+    el.addEventListener("change", checkDirty);
+  });
+
+  form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const errEl = document.getElementById("form-error") as HTMLParagraphElement;
       errEl.hidden = true;
@@ -876,6 +946,21 @@ function renderSettingsTab(tc: HTMLDivElement) {
       n.logging = (document.getElementById("logging") as HTMLInputElement).checked;
 
       configState = await backendInvoke<AppConfig>("save_settings", { settings: configState });
+
+      // Flash success toast
+      const toast = document.getElementById("save-toast") as HTMLParagraphElement;
+      toast.classList.remove("hidden");
+      saveBtn.classList.add("hidden");
+      setTimeout(() => toast.classList.add("hidden"), 1500);
+
+      // Update snapshot so button stays hidden until next change
+      snapshot.name = n.name;
+      snapshot.api_key = n.api_key;
+      snapshot.platform = detectPlatform(n.quota_url);
+      snapshot.poll_interval_minutes = n.poll_interval_minutes;
+      snapshot.enabled = n.enabled;
+      snapshot.logging = n.logging;
+
       render();
     });
 

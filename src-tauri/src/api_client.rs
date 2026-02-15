@@ -1,25 +1,27 @@
 use chrono::{Local, TimeZone};
-use log::{debug, info, warn};
+use log::{debug, info};
 use reqwest::header::{ACCEPT_LANGUAGE, AUTHORIZATION, CONTENT_TYPE};
 use serde_json::json;
 
+use crate::file_logger;
 use crate::models::{KeySlotConfig, QuotaApiResponse, QuotaApiResponseFull, QuotaSnapshot,
     ModelUsageApiResponse, ToolUsageApiResponse, SlotStats, LimitInfo, UsageDetailInfo};
 
 #[derive(Clone)]
 pub struct ApiClient {
     client: reqwest::Client,
+    app: Option<tauri::AppHandle>,
 }
 
 impl ApiClient {
-    pub fn new() -> Result<Self, String> {
+    pub fn new(app: Option<tauri::AppHandle>) -> Result<Self, String> {
         let client = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(5))
             .timeout(std::time::Duration::from_secs(15))
             .build()
             .map_err(|err| format!("failed to create HTTP client: {err}"))?;
 
-        Ok(Self { client })
+        Ok(Self { client, app })
     }
 
     fn auth_header(api_key: &str) -> String {
@@ -27,6 +29,16 @@ impl ApiClient {
             api_key.trim().to_string()
         } else {
             format!("Bearer {}", api_key.trim())
+        }
+    }
+
+    /// Log to JSONL file if logging is enabled and an app handle is available.
+    async fn log(&self, cfg: &KeySlotConfig, entry: file_logger::LogEntry) {
+        if !cfg.logging {
+            return;
+        }
+        if let Some(app) = &self.app {
+            let _ = file_logger::append(app, entry).await;
         }
     }
 
@@ -43,16 +55,12 @@ impl ApiClient {
             ]
         });
 
-        if cfg.logging {
-            info!("slot {} [LOG] warmup POST {}", cfg.slot, url);
-            info!("slot {} [LOG] request body: {}", cfg.slot, body);
-        } else {
-            info!("slot {}: sending warmup request to {}", cfg.slot, url);
-        }
+        info!("slot {}: sending warmup request to {}", cfg.slot, url);
+        self.log(cfg, file_logger::request_entry(cfg.slot, "manual-warmup", "POST", &url, Some(body.clone()))).await;
 
         let response = self
             .client
-            .post(url)
+            .post(&url)
             .header(AUTHORIZATION, Self::auth_header(&cfg.api_key))
             .header(ACCEPT_LANGUAGE, "en-US")
             .header(CONTENT_TYPE, "application/json")
@@ -60,20 +68,17 @@ impl ApiClient {
             .send()
             .await
             .map_err(|err| {
-                if cfg.logging {
-                    warn!("slot {} [LOG] warmup request error: {}", cfg.slot, err);
-                }
-                format!("warmup request failed: {err}")
+                let msg = format!("warmup request failed: {err}");
+                msg
             })?;
 
         let status = response.status();
-        if cfg.logging {
-            info!("slot {} [LOG] warmup response status: {}", cfg.slot, status);
-            // Skip response body for LLM endpoints
-        }
+        self.log(cfg, file_logger::response_entry(cfg.slot, "manual-warmup", "POST", &url, status.as_u16(), None)).await;
 
         if !status.is_success() {
-            return Err(format!("warmup HTTP error: {}", status));
+            let msg = format!("warmup HTTP error: {}", status);
+            self.log(cfg, file_logger::error_entry(cfg.slot, "manual-warmup", "POST", &url, &msg)).await;
+            return Err(msg);
         }
 
         info!("slot {}: warmup request succeeded", cfg.slot);
@@ -97,16 +102,12 @@ impl ApiClient {
             ]
         });
 
-        if cfg.logging {
-            info!("slot {} [LOG] wake POST {}", cfg.slot, url);
-            info!("slot {} [LOG] request body: {}", cfg.slot, body);
-        } else {
-            info!("slot {}: sending scheduled wake request to {}", cfg.slot, url);
-        }
+        info!("slot {}: sending scheduled wake request to {}", cfg.slot, url);
+        self.log(cfg, file_logger::request_entry(cfg.slot, "scheduled-wake", "POST", &url, Some(body.clone()))).await;
 
         let response = self
             .client
-            .post(url)
+            .post(&url)
             .header(AUTHORIZATION, Self::auth_header(&cfg.api_key))
             .header(ACCEPT_LANGUAGE, "en-US")
             .header(CONTENT_TYPE, "application/json")
@@ -114,20 +115,17 @@ impl ApiClient {
             .send()
             .await
             .map_err(|err| {
-                if cfg.logging {
-                    warn!("slot {} [LOG] wake request error: {}", cfg.slot, err);
-                }
-                format!("wake request failed: {err}")
+                let msg = format!("wake request failed: {err}");
+                msg
             })?;
 
         let status = response.status();
-        if cfg.logging {
-            info!("slot {} [LOG] wake response status: {}", cfg.slot, status);
-            // Skip response body for LLM endpoints
-        }
+        self.log(cfg, file_logger::response_entry(cfg.slot, "scheduled-wake", "POST", &url, status.as_u16(), None)).await;
 
         if !status.is_success() {
-            return Err(format!("wake HTTP error: {}", status));
+            let msg = format!("wake HTTP error: {}", status);
+            self.log(cfg, file_logger::error_entry(cfg.slot, "scheduled-wake", "POST", &url, &msg)).await;
+            return Err(msg);
         }
 
         info!("slot {}: wake request succeeded", cfg.slot);
@@ -135,11 +133,8 @@ impl ApiClient {
     }
 
     pub async fn fetch_quota(&self, cfg: &KeySlotConfig) -> Result<QuotaSnapshot, String> {
-        if cfg.logging {
-            info!("slot {} [LOG] quota GET {}", cfg.slot, cfg.quota_url);
-        } else {
-            debug!("slot {}: fetching quota from {}", cfg.slot, cfg.quota_url);
-        }
+        debug!("slot {}: fetching quota from {}", cfg.slot, cfg.quota_url);
+        self.log(cfg, file_logger::request_entry(cfg.slot, "background-quota-poll", "GET", &cfg.quota_url, None)).await;
 
         let req = self
             .client
@@ -152,19 +147,16 @@ impl ApiClient {
             .send()
             .await
             .map_err(|err| {
-                if cfg.logging {
-                    warn!("slot {} [LOG] quota request error: {}", cfg.slot, err);
-                }
-                format!("quota request failed: {err}")
+                let msg = format!("quota request failed: {err}");
+                msg
             })?;
 
         let status = response.status();
-        if cfg.logging {
-            info!("slot {} [LOG] quota response status: {}", cfg.slot, status);
-        }
 
         if !status.is_success() {
-            return Err(format!("quota HTTP error: {}", status));
+            let msg = format!("quota HTTP error: {}", status);
+            self.log(cfg, file_logger::error_entry(cfg.slot, "background-quota-poll", "GET", &cfg.quota_url, &msg)).await;
+            return Err(msg);
         }
 
         let raw_text = response
@@ -172,9 +164,8 @@ impl ApiClient {
             .await
             .map_err(|err| format!("failed to read quota response: {err}"))?;
 
-        if cfg.logging {
-            info!("slot {} [LOG] quota response body: {}", cfg.slot, raw_text);
-        }
+        let resp_json: Option<serde_json::Value> = serde_json::from_str(&raw_text).ok();
+        self.log(cfg, file_logger::response_entry(cfg.slot, "background-quota-poll", "GET", &cfg.quota_url, status.as_u16(), resp_json)).await;
 
         let payload: QuotaApiResponse =
             serde_json::from_str(&raw_text).map_err(|err| format!("invalid quota JSON response: {err}"))?;
@@ -227,6 +218,7 @@ impl ApiClient {
         let auth = Self::auth_header(&cfg.api_key);
 
         // 1. Fetch full quota/limit
+        self.log(cfg, file_logger::request_entry(cfg.slot, "manual-stats-request", "GET", &cfg.quota_url, None)).await;
         let quota_resp = self
             .client
             .get(&cfg.quota_url)
@@ -238,10 +230,14 @@ impl ApiClient {
             .map_err(|e| format!("quota request failed: {e}"))?;
 
         if !quota_resp.status().is_success() {
-            return Err(format!("quota HTTP error: {}", quota_resp.status()));
+            let msg = format!("quota HTTP error: {}", quota_resp.status());
+            self.log(cfg, file_logger::error_entry(cfg.slot, "manual-stats-request", "GET", &cfg.quota_url, &msg)).await;
+            return Err(msg);
         }
 
         let quota_text = quota_resp.text().await.map_err(|e| format!("read quota: {e}"))?;
+        let resp_json: Option<serde_json::Value> = serde_json::from_str(&quota_text).ok();
+        self.log(cfg, file_logger::response_entry(cfg.slot, "manual-stats-request", "GET", &cfg.quota_url, 200, resp_json)).await;
         let quota_parsed: QuotaApiResponseFull =
             serde_json::from_str(&quota_text).map_err(|e| format!("parse quota: {e}"))?;
 
@@ -285,6 +281,7 @@ impl ApiClient {
         let (total_model_calls, total_tokens) = {
             let url = format!("{}/model-usage?startTime={}&endTime={}", base,
                 urlencoding::encode(&start), urlencoding::encode(&end));
+            self.log(cfg, file_logger::request_entry(cfg.slot, "manual-model-usage", "GET", &url, None)).await;
             match self.client.get(&url)
                 .header(AUTHORIZATION, auth.clone())
                 .header(ACCEPT_LANGUAGE, "en-US")
@@ -292,7 +289,10 @@ impl ApiClient {
                 .send().await
             {
                 Ok(resp) if resp.status().is_success() => {
+                    let status = resp.status().as_u16();
                     let text = resp.text().await.unwrap_or_default();
+                    let resp_json: Option<serde_json::Value> = serde_json::from_str(&text).ok();
+                    self.log(cfg, file_logger::response_entry(cfg.slot, "manual-model-usage", "GET", &url, status, resp_json)).await;
                     let parsed: Result<ModelUsageApiResponse, _> = serde_json::from_str(&text);
                     match parsed {
                         Ok(r) if r.code == 200 => {
@@ -303,7 +303,15 @@ impl ApiClient {
                         _ => (0, 0),
                     }
                 }
-                _ => (0, 0),
+                Ok(resp) => {
+                    let msg = format!("model-usage HTTP error: {}", resp.status());
+                    self.log(cfg, file_logger::error_entry(cfg.slot, "manual-model-usage", "GET", &url, &msg)).await;
+                    (0, 0)
+                }
+                Err(e) => {
+                    self.log(cfg, file_logger::error_entry(cfg.slot, "manual-model-usage", "GET", &url, &e.to_string())).await;
+                    (0, 0)
+                }
             }
         };
 
@@ -311,6 +319,7 @@ impl ApiClient {
         let (net_search, web_read, zread, search_mcp) = {
             let url = format!("{}/tool-usage?startTime={}&endTime={}", base,
                 urlencoding::encode(&start), urlencoding::encode(&end));
+            self.log(cfg, file_logger::request_entry(cfg.slot, "manual-tool-usage", "GET", &url, None)).await;
             match self.client.get(&url)
                 .header(AUTHORIZATION, auth.clone())
                 .header(ACCEPT_LANGUAGE, "en-US")
@@ -318,7 +327,10 @@ impl ApiClient {
                 .send().await
             {
                 Ok(resp) if resp.status().is_success() => {
+                    let status = resp.status().as_u16();
                     let text = resp.text().await.unwrap_or_default();
+                    let resp_json: Option<serde_json::Value> = serde_json::from_str(&text).ok();
+                    self.log(cfg, file_logger::response_entry(cfg.slot, "manual-tool-usage", "GET", &url, status, resp_json)).await;
                     let parsed: Result<ToolUsageApiResponse, _> = serde_json::from_str(&text);
                     match parsed {
                         Ok(r) if r.code == 200 => {
@@ -331,7 +343,15 @@ impl ApiClient {
                         _ => (0, 0, 0, 0),
                     }
                 }
-                _ => (0, 0, 0, 0),
+                Ok(resp) => {
+                    let msg = format!("tool-usage HTTP error: {}", resp.status());
+                    self.log(cfg, file_logger::error_entry(cfg.slot, "manual-tool-usage", "GET", &url, &msg)).await;
+                    (0, 0, 0, 0)
+                }
+                Err(e) => {
+                    self.log(cfg, file_logger::error_entry(cfg.slot, "manual-tool-usage", "GET", &url, &e.to_string())).await;
+                    (0, 0, 0, 0)
+                }
             }
         };
 

@@ -1,44 +1,108 @@
 use std::path::PathBuf;
 
-use log::{debug, info};
+use log::{debug, info, warn};
 use tauri::{AppHandle, Manager};
 use tokio::fs;
 
-use crate::models::{AppConfig, KeySlotConfig, MAX_SLOTS};
+use crate::models::{AppConfig, KeySlotConfig, CURRENT_CONFIG_VERSION, MAX_SLOTS};
 
 const CONFIG_FILE_NAME: &str = "settings.json";
 
-fn ensure_normalized(input: AppConfig) -> AppConfig {
-    let mut normalized = input;
+/// Apply forward migrations from the persisted version to the current version.
+/// Each migration step handles exactly one version bump.
+fn migrate(mut cfg: AppConfig) -> AppConfig {
+    let from = cfg.config_version;
 
-    if normalized.slots.len() > MAX_SLOTS {
-        normalized.slots.truncate(MAX_SLOTS);
+    // version 0 → 1: initial versioned schema (no structural changes, just stamp)
+    if cfg.config_version < 1 {
+        info!("migrating config v0 → v1 (adding version stamp)");
+        cfg.config_version = 1;
     }
 
-    while normalized.slots.len() < MAX_SLOTS {
-        normalized.slots.push(KeySlotConfig::default());
+    // Future: if cfg.config_version < 2 { … }
+
+    if from != cfg.config_version {
+        info!("config migrated from v{from} → v{}", cfg.config_version);
     }
 
-    for (idx, slot) in normalized.slots.iter_mut().enumerate() {
+    cfg
+}
+
+/// Clamp, trim, and sanitise every field so the rest of the app can trust it.
+fn validate(mut cfg: AppConfig) -> AppConfig {
+    // -- slot count --
+    if cfg.slots.len() > MAX_SLOTS {
+        warn!("config: truncating {} slots → {MAX_SLOTS}", cfg.slots.len());
+        cfg.slots.truncate(MAX_SLOTS);
+    }
+    while cfg.slots.len() < MAX_SLOTS {
+        cfg.slots.push(KeySlotConfig::default());
+    }
+
+    let defaults = KeySlotConfig::default();
+
+    for (idx, slot) in cfg.slots.iter_mut().enumerate() {
         slot.slot = idx + 1;
-        slot.poll_interval_minutes = slot.poll_interval_minutes.max(1);
-        slot.wake_interval_minutes = slot.wake_interval_minutes.max(1);
-        slot.wake_after_reset_minutes = slot.wake_after_reset_minutes.max(1);
+
+        // -- name: trim, cap at 32 chars --
+        slot.name = slot.name.trim().chars().take(32).collect();
+
+        // -- api_key: trim whitespace (no length cap – keys vary by platform) --
+        slot.api_key = slot.api_key.trim().to_string();
+
+        // -- URLs: must start with https:// or fall back to defaults --
+        if !slot.quota_url.starts_with("https://") {
+            if !slot.quota_url.trim().is_empty() {
+                warn!("slot {}: invalid quota_url '{}', resetting to default", slot.slot, slot.quota_url);
+            }
+            slot.quota_url = defaults.quota_url.clone();
+        }
+        if let Some(ref url) = slot.request_url {
+            if !url.starts_with("https://") {
+                warn!("slot {}: invalid request_url '{}', resetting to default", slot.slot, url);
+                slot.request_url = defaults.request_url.clone();
+            }
+        }
+
+        // -- interval bounds (min 1, max 1440 = 24 h) --
+        slot.poll_interval_minutes = slot.poll_interval_minutes.clamp(1, 1440);
+        slot.wake_interval_minutes = slot.wake_interval_minutes.clamp(1, 1440);
+        slot.wake_after_reset_minutes = slot.wake_after_reset_minutes.clamp(1, 1440);
+
+        // -- wake_times: max 5 entries, trim, drop blanks, validate HH:MM --
         if slot.wake_times.len() > 5 {
             slot.wake_times.truncate(5);
         }
         slot.wake_times = slot
             .wake_times
             .iter()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
+            .map(|v| v.trim().to_string())
+            .filter(|v| {
+                if v.is_empty() {
+                    return false;
+                }
+                // accept HH:MM (00:00 – 23:59)
+                let valid = v.len() == 5
+                    && v.as_bytes()[2] == b':'
+                    && v[..2].parse::<u8>().map_or(false, |h| h < 24)
+                    && v[3..].parse::<u8>().map_or(false, |m| m < 60);
+                if !valid {
+                    warn!("slot {}: dropping invalid wake_time '{v}'", slot.slot);
+                }
+                valid
+            })
             .collect();
-        if slot.quota_url.trim().is_empty() {
-            slot.quota_url = KeySlotConfig::default().quota_url;
+
+        // -- if key is blank, disable polling + wake for safety --
+        if slot.api_key.is_empty() && slot.enabled {
+            warn!("slot {}: no API key, force-disabling", slot.slot);
+            slot.enabled = false;
         }
     }
 
-    normalized
+    // stamp current version
+    cfg.config_version = CURRENT_CONFIG_VERSION;
+    cfg
 }
 
 pub fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -67,11 +131,25 @@ pub async fn load_config(app: &AppHandle) -> Result<AppConfig, String> {
     let parsed: AppConfig =
         serde_json::from_str(&content).map_err(|err| format!("invalid config JSON: {err}"))?;
 
-    Ok(ensure_normalized(parsed))
+    let migrated = migrate(parsed);
+    let validated = validate(migrated);
+
+    // Re-save if migration or validation changed anything
+    if validated.config_version != 0 {
+        // always persist after load so the file reflects the latest schema
+        let serialized = serde_json::to_string_pretty(&validated)
+            .map_err(|err| format!("failed to serialize config: {err}"))?;
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent).await;
+        }
+        let _ = fs::write(&path, serialized).await;
+    }
+
+    Ok(validated)
 }
 
 pub async fn save_config(app: &AppHandle, input: AppConfig) -> Result<AppConfig, String> {
-    let normalized = ensure_normalized(input);
+    let validated = validate(input);
     let path = config_path(app)?;
 
     info!("saving config to {}", path.display());
@@ -82,12 +160,12 @@ pub async fn save_config(app: &AppHandle, input: AppConfig) -> Result<AppConfig,
             .map_err(|err| format!("failed to create config directory: {err}"))?;
     }
 
-    let serialized = serde_json::to_string_pretty(&normalized)
+    let serialized = serde_json::to_string_pretty(&validated)
         .map_err(|err| format!("failed to serialize config: {err}"))?;
 
     fs::write(path, serialized)
         .await
         .map_err(|err| format!("failed to write config: {err}"))?;
 
-    Ok(normalized)
+    Ok(validated)
 }
