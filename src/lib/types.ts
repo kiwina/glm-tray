@@ -1,0 +1,91 @@
+export type WakeMode = "interval" | "times" | "after_reset";
+export type View = "dashboard" | "1" | "2" | "3" | "4";
+export type KeyTab = "stats" | "schedule" | "settings";
+export type Platform = "zai" | "bigmodel";
+
+export interface KeySlotConfig {
+  slot: number;
+  name: string;
+  enabled: boolean;
+  api_key: string;
+  quota_url: string;
+  request_url: string | null;
+  // Legacy (computed from enabled flags)
+  wake_enabled: boolean;
+  wake_mode: WakeMode;
+  // New: separate enabled flags per mode
+  wake_interval_enabled: boolean;
+  wake_times_enabled: boolean;
+  wake_after_reset_enabled: boolean;
+  // Mode-specific settings
+  wake_interval_minutes: number;
+  wake_times: string[];
+  wake_after_reset_minutes: number;
+  poll_interval_minutes: number;
+  logging: boolean;
+}
+
+export interface AppConfig {
+  slots: KeySlotConfig[];
+  theme: string;
+  config_version?: number;
+}
+
+export interface SlotRuntimeStatus {
+  slot: number;
+  name: string;
+  enabled: boolean;
+  timer_active: boolean;
+  percentage: number | null;
+  next_reset_hms: string | null;
+  last_error: string | null;
+  last_updated_epoch_ms: number | null;
+  consecutive_errors: number;
+  auto_disabled: boolean;
+}
+
+export interface RuntimeStatus {
+  monitoring: boolean;
+  slots: SlotRuntimeStatus[];
+}
+
+export interface LimitInfo {
+  type_name: string;
+  percentage: number;
+  unit: number | null;
+  usage: number | null;
+  current_value: number | null;
+  remaining: number | null;
+  next_reset_time: number | null;
+  next_reset_hms: string | null;
+  usage_details: { model_code: string; usage: number }[];
+}
+
+export interface SlotStats {
+  level: string;
+  limits: LimitInfo[];
+  total_model_calls_24h: number;
+  total_tokens_24h: number;
+  total_network_search_24h: number;
+  total_web_read_24h: number;
+  total_zread_24h: number;
+  total_search_mcp_24h: number;
+}
+
+export interface UpdateInfo {
+  current_version: string;
+  latest_version: string;
+  has_update: boolean;
+  download_url: string;
+  release_notes: string;
+  published_at: string;
+  source?: string;
+}
+
+export interface QuotaUpdateEvent {
+  slot: number;
+  percentage: number;
+  timer_active: boolean;
+  next_reset_hms: string | null;
+  next_reset_epoch_ms: number | null;
+}

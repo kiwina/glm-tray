@@ -3,13 +3,13 @@ use std::sync::Arc;
 
 use chrono::{Local, Timelike};
 use log::{error, info, warn};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use tokio::sync::{watch, RwLock};
 use tokio::task::JoinHandle;
 use tokio::time::{self, Duration, Instant};
 
 use crate::api_client::ApiClient;
-use crate::models::{AppConfig, KeySlotConfig, RuntimeStatus, SlotRuntimeStatus, WakeMode};
+use crate::models::{AppConfig, KeySlotConfig, RuntimeStatus, SlotRuntimeStatus};
 use crate::tray;
 
 const MAX_CONSECUTIVE_ERRORS: u32 = 10;
@@ -36,9 +36,11 @@ impl Default for SlotSchedule {
 }
 
 /// Controls for a single slot's tasks (wake + poll)
+#[allow(dead_code)] // Fields used for task control, some kept for future extensibility
 struct SlotTaskControl {
     stop_tx: watch::Sender<bool>,
     config_tx: watch::Sender<KeySlotConfig>,
+    poll_now_tx: watch::Sender<bool>,
     wake_handle: JoinHandle<()>,
     poll_handle: JoinHandle<()>,
 }
@@ -87,7 +89,8 @@ impl SchedulerManager {
             // Create communication channels
             let (stop_tx, stop_rx) = watch::channel(false);
             let (config_tx, config_rx) = watch::channel(slot_cfg.clone());
-            
+            let (poll_now_tx, poll_now_rx) = watch::channel(false);
+
             // Shared schedule state
             let schedule = Arc::new(RwLock::new(SlotSchedule::default()));
             let runtime_handle = runtime_status.clone();
@@ -101,6 +104,7 @@ impl SchedulerManager {
                 schedule.clone(),
                 runtime_handle.clone(),
                 stop_rx.clone(),
+                poll_now_tx.clone(),
             ));
 
             // Spawn quota poller task
@@ -111,11 +115,13 @@ impl SchedulerManager {
                 schedule,
                 runtime_handle,
                 stop_rx,
+                poll_now_rx,
             ));
 
             self.slot_tasks.insert(idx, SlotTaskControl {
                 stop_tx,
                 config_tx,
+                poll_now_tx,
                 wake_handle,
                 poll_handle,
             });
@@ -179,6 +185,7 @@ impl SchedulerManager {
         schedule: Arc<RwLock<SlotSchedule>>,
         runtime_status: Arc<RwLock<RuntimeStatus>>,
         mut stop_rx: watch::Receiver<bool>,
+        poll_now_tx: watch::Sender<bool>,
     ) {
         info!("slot {} wake scheduler started", idx + 1);
 
@@ -206,17 +213,21 @@ impl SchedulerManager {
             // Check if we should fire a wake request
             if let Some(should_fire) = should_fire_wake(&cfg, &sched) {
                 info!("slot {} wake condition met: {}", idx + 1, should_fire);
-                
+
                 if let Err(err) = client.send_wake_request(&cfg).await {
                     warn!("slot {} scheduled wake failed: {}", idx + 1, err);
                     update_error(&runtime_status, idx, &err).await;
                 } else {
                     info!("slot {} scheduled wake fired", idx + 1);
-                    
+
                     // Update schedule markers after successful wake
                     let mut sched_mut = schedule.write().await;
                     let old_sched = sched_mut.clone();
                     update_schedule_markers(&cfg, &old_sched, &mut sched_mut);
+
+                    // Trigger immediate quota poll to verify wake worked
+                    let _ = poll_now_tx.send(true);
+                    info!("slot {} triggered immediate quota poll", idx + 1);
                 }
             }
 
@@ -245,6 +256,7 @@ impl SchedulerManager {
         schedule: Arc<RwLock<SlotSchedule>>,
         runtime_status: Arc<RwLock<RuntimeStatus>>,
         mut stop_rx: watch::Receiver<bool>,
+        mut poll_now_rx: watch::Receiver<bool>,
     ) {
         info!("slot {} quota poller started", idx + 1);
 
@@ -282,6 +294,23 @@ impl SchedulerManager {
                     }
                     consecutive_errors = 0;
 
+                    // Verify next_reset_time is in the future
+                    let now_ms = Local::now().timestamp_millis();
+                    if let Some(next_reset) = snapshot.next_reset_epoch_ms {
+                        if next_reset <= now_ms {
+                            warn!(
+                                "slot {} next_reset_time {} is not in the future (now: {})",
+                                idx + 1, next_reset, now_ms
+                            );
+                        } else {
+                            info!(
+                                "slot {} quota verified: next_reset in {} min",
+                                idx + 1,
+                                (next_reset - now_ms) / 60_000
+                            );
+                        }
+                    }
+
                     // Update shared schedule state
                     {
                         let mut sched = schedule.write().await;
@@ -297,13 +326,23 @@ impl SchedulerManager {
                             current.enabled = true;
                             current.timer_active = snapshot.timer_active;
                             current.percentage = Some(snapshot.percentage);
-                            current.next_reset_hms = snapshot.next_reset_hms;
+                            current.next_reset_hms = snapshot.next_reset_hms.clone();
                             current.last_error = None;
                             current.last_updated_epoch_ms = snapshot.next_reset_epoch_ms;
                             current.consecutive_errors = 0;
                             current.auto_disabled = false;
                         }
                     }
+
+                    // Emit event to frontend so it can refresh stats
+                    let _ = app.emit("quota-updated", serde_json::json!({
+                        "slot": idx + 1,
+                        "percentage": snapshot.percentage,
+                        "timer_active": snapshot.timer_active,
+                        "next_reset_hms": snapshot.next_reset_hms,
+                        "next_reset_epoch_ms": snapshot.next_reset_epoch_ms
+                    }));
+
                     info!("slot {} quota refreshed (next_reset: {:?})", idx + 1, snapshot.next_reset_epoch_ms);
                 }
                 Err(err) => {
@@ -357,7 +396,7 @@ impl SchedulerManager {
                 capped
             };
 
-            // Sleep for poll interval
+            // Sleep for poll interval, but wake immediately if signaled
             tokio::select! {
                 _ = stop_rx.changed() => {
                     if *stop_rx.borrow() {
@@ -366,6 +405,9 @@ impl SchedulerManager {
                 }
                 _ = config_rx.changed() => {
                     info!("slot {} quota poller detected config change", idx + 1);
+                }
+                _ = poll_now_rx.changed() => {
+                    info!("slot {} quota poller received immediate poll signal", idx + 1);
                 }
                 _ = time::sleep(Duration::from_secs(sleep_minutes * 60)) => {}
             }
@@ -377,83 +419,89 @@ impl SchedulerManager {
 
 /// Check if wake should fire based on current config and schedule state.
 /// Returns Some(reason) if should fire, None otherwise.
+/// Now supports multiple enabled modes - fires if ANY enabled mode triggers.
 fn should_fire_wake(
     slot_cfg: &KeySlotConfig,
     schedule: &SlotSchedule,
 ) -> Option<String> {
-    if !slot_cfg.wake_enabled {
+    // Check if any wake mode is enabled
+    let any_enabled = slot_cfg.wake_interval_enabled
+        || slot_cfg.wake_times_enabled
+        || slot_cfg.wake_after_reset_enabled;
+
+    if !any_enabled {
         return None;
     }
 
-    match slot_cfg.wake_mode {
-        WakeMode::Interval => {
-            let interval = Duration::from_secs(slot_cfg.wake_interval_minutes.max(1) * 60);
-            if schedule.last_interval_fire.elapsed() >= interval {
-                Some(format!(
-                    "interval mode ({} min elapsed)",
-                    slot_cfg.wake_interval_minutes
-                ))
-            } else {
-                None
-            }
+    // Check interval mode
+    if slot_cfg.wake_interval_enabled {
+        let interval = Duration::from_secs(slot_cfg.wake_interval_minutes.max(1) * 60);
+        if schedule.last_interval_fire.elapsed() >= interval {
+            return Some(format!(
+                "interval mode ({} min elapsed)",
+                slot_cfg.wake_interval_minutes
+            ));
         }
-        WakeMode::Times => {
-            let now = Local::now();
-            let current_hm = format!("{:02}:{:02}", now.hour(), now.minute());
-            
-            if !slot_cfg.wake_times.iter().any(|value| value == &current_hm) {
-                return None;
-            }
+    }
 
+    // Check times mode
+    if slot_cfg.wake_times_enabled {
+        let now = Local::now();
+        let current_hm = format!("{:02}:{:02}", now.hour(), now.minute());
+
+        if slot_cfg.wake_times.iter().any(|value| value == &current_hm) {
             let marker = format!("{}-{}", now.format("%Y-%m-%d"), current_hm);
-            if schedule.last_times_marker.as_ref() == Some(&marker) {
-                return None;
+            if schedule.last_times_marker.as_ref() != Some(&marker) {
+                return Some(format!("times mode (matched {})", current_hm));
             }
-
-            Some(format!("times mode (matched {})", current_hm))
         }
-        WakeMode::AfterReset => {
-            let Some(next_reset) = schedule.next_reset_epoch_ms else {
-                // No reset time available yet
-                return None;
-            };
-            
+    }
+
+    // Check after-reset mode
+    if slot_cfg.wake_after_reset_enabled {
+        if let Some(next_reset) = schedule.next_reset_epoch_ms {
             let target = next_reset + (slot_cfg.wake_after_reset_minutes.max(1) as i64 * 60_000);
             let now_ms = Local::now().timestamp_millis();
 
-            if now_ms < target {
-                return None;
+            if now_ms >= target && schedule.last_reset_marker != Some(next_reset) {
+                return Some(format!(
+                    "after-reset mode (reset + {} min)",
+                    slot_cfg.wake_after_reset_minutes
+                ));
             }
-
-            if schedule.last_reset_marker == Some(next_reset) {
-                return None;
-            }
-
-            Some(format!(
-                "after-reset mode (reset + {} min)",
-                slot_cfg.wake_after_reset_minutes
-            ))
         }
     }
+
+    None
 }
 
-/// Update schedule markers after a successful wake
+/// Update schedule markers after a successful wake.
+/// Now updates markers for all enabled modes since multiple can be active.
 fn update_schedule_markers(
     slot_cfg: &KeySlotConfig,
     old_schedule: &SlotSchedule,
     new_schedule: &mut SlotSchedule,
 ) {
-    match slot_cfg.wake_mode {
-        WakeMode::Interval => {
-            new_schedule.last_interval_fire = Instant::now();
-        }
-        WakeMode::Times => {
-            let now = Local::now();
-            let current_hm = format!("{:02}:{:02}", now.hour(), now.minute());
+    // Always update interval marker if enabled
+    if slot_cfg.wake_interval_enabled {
+        new_schedule.last_interval_fire = Instant::now();
+    }
+
+    // Update times marker if enabled and matched
+    if slot_cfg.wake_times_enabled {
+        let now = Local::now();
+        let current_hm = format!("{:02}:{:02}", now.hour(), now.minute());
+        if slot_cfg.wake_times.iter().any(|value| value == &current_hm) {
             new_schedule.last_times_marker = Some(format!("{}-{}", now.format("%Y-%m-%d"), current_hm));
         }
-        WakeMode::AfterReset => {
-            if let Some(next_reset) = old_schedule.next_reset_epoch_ms {
+    }
+
+    // Update after-reset marker if enabled
+    if slot_cfg.wake_after_reset_enabled {
+        if let Some(next_reset) = old_schedule.next_reset_epoch_ms {
+            let target = next_reset + (slot_cfg.wake_after_reset_minutes.max(1) as i64 * 60_000);
+            let now_ms = Local::now().timestamp_millis();
+            if now_ms >= target {
                 new_schedule.last_reset_marker = Some(next_reset);
             }
         }

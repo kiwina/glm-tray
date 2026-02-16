@@ -4,7 +4,7 @@ use log::{debug, info, warn};
 use tauri::{AppHandle, Manager};
 use tokio::fs;
 
-use crate::models::{AppConfig, KeySlotConfig, CURRENT_CONFIG_VERSION, MAX_SLOTS};
+use crate::models::{AppConfig, KeySlotConfig, WakeMode, CURRENT_CONFIG_VERSION, MAX_SLOTS};
 
 const CONFIG_FILE_NAME: &str = "settings.json";
 
@@ -19,7 +19,21 @@ fn migrate(mut cfg: AppConfig) -> AppConfig {
         cfg.config_version = 1;
     }
 
-    // Future: if cfg.config_version < 2 { … }
+    // version 1 → 2: separate enabled flags per wake mode
+    if cfg.config_version < 2 {
+        info!("migrating config v1 → v2 (separate wake mode enabled flags)");
+        for slot in &mut cfg.slots {
+            // If wake was enabled, enable the corresponding mode's flag
+            if slot.wake_enabled {
+                match slot.wake_mode {
+                    WakeMode::Interval => slot.wake_interval_enabled = true,
+                    WakeMode::Times => slot.wake_times_enabled = true,
+                    WakeMode::AfterReset => slot.wake_after_reset_enabled = true,
+                }
+            }
+        }
+        cfg.config_version = 2;
+    }
 
     if from != cfg.config_version {
         info!("config migrated from v{from} → v{}", cfg.config_version);

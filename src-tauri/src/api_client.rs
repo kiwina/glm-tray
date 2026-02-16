@@ -248,9 +248,21 @@ impl ApiClient {
             .limits
             .iter()
             .map(|l| {
-                let hms = l.next_reset_time.and_then(|ts| {
+                // Format reset time based on unit:
+                // 1=seconds, 2=minutes, 3=hours → HH:MM:SS
+                // 4=days, 5=months, 6=years → "Jan 31" date format
+                let reset_display = l.next_reset_time.and_then(|ts| {
                     if ts > 0 {
-                        Local.timestamp_millis_opt(ts).single().map(|dt| dt.format("%H:%M:%S").to_string())
+                        Local.timestamp_millis_opt(ts).single().map(|dt| {
+                            let unit = l.unit.unwrap_or(3);
+                            if unit <= 3 {
+                                // Hours or less → show time
+                                dt.format("%H:%M:%S").to_string()
+                            } else {
+                                // Days/months/years → show date
+                                dt.format("%b %d").to_string()
+                            }
+                        })
                     } else {
                         None
                     }
@@ -258,11 +270,12 @@ impl ApiClient {
                 LimitInfo {
                     type_name: l.r#type.clone(),
                     percentage: l.percentage,
+                    unit: l.unit,
                     usage: l.usage,
                     current_value: l.current_value,
                     remaining: l.remaining,
                     next_reset_time: l.next_reset_time,
-                    next_reset_hms: hms,
+                    next_reset_hms: reset_display,
                     usage_details: l.usage_details.iter().map(|d| UsageDetailInfo {
                         model_code: d.model_code.clone(),
                         usage: d.usage,

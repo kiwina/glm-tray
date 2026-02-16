@@ -4,6 +4,7 @@ mod file_logger;
 mod models;
 mod scheduler;
 mod tray;
+mod update_checker;
 
 use std::sync::Arc;
 
@@ -85,6 +86,11 @@ async fn fetch_slot_stats(app: tauri::AppHandle, state: tauri::State<'_, SharedS
     }
     let client = api_client::ApiClient::new(Some(app))?;
     client.fetch_slot_stats(slot_cfg).await
+}
+
+#[tauri::command]
+async fn check_for_updates_cmd() -> Result<update_checker::UpdateInfo, String> {
+    update_checker::check_for_updates().await
 }
 
 pub async fn start_monitoring_internal(app: tauri::AppHandle) -> Result<(), String> {
@@ -176,6 +182,8 @@ pub fn run() {
             }
         })
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             load_settings,
             save_settings,
@@ -183,7 +191,8 @@ pub fn run() {
             stop_monitoring,
             get_runtime_status,
             warmup_all,
-            fetch_slot_stats
+            fetch_slot_stats,
+            check_for_updates_cmd
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

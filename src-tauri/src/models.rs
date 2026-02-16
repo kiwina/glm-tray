@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const MAX_SLOTS: usize = 4;
-pub const CURRENT_CONFIG_VERSION: u32 = 1;
+pub const CURRENT_CONFIG_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -26,8 +26,20 @@ pub struct KeySlotConfig {
     pub api_key: String,
     pub quota_url: String,
     pub request_url: Option<String>,
+    // Legacy field (kept for backwards compat, computed from enabled flags)
+    #[serde(default)]
     pub wake_enabled: bool,
+    // Legacy field (kept for migration)
+    #[serde(default)]
     pub wake_mode: WakeMode,
+    // New: separate enabled flags for each mode
+    #[serde(default)]
+    pub wake_interval_enabled: bool,
+    #[serde(default)]
+    pub wake_times_enabled: bool,
+    #[serde(default)]
+    pub wake_after_reset_enabled: bool,
+    // Mode-specific settings
     pub wake_interval_minutes: u64,
     pub wake_times: Vec<String>,
     pub wake_after_reset_minutes: u64,
@@ -46,6 +58,9 @@ impl Default for KeySlotConfig {
             request_url: Some("https://api.z.ai/api/coding/paas/v4/chat/completions".to_string()),
             wake_enabled: false,
             wake_mode: WakeMode::AfterReset,
+            wake_interval_enabled: false,
+            wake_times_enabled: false,
+            wake_after_reset_enabled: false,
             wake_interval_minutes: 60,
             wake_times: Vec::new(),
             wake_after_reset_minutes: 1,
@@ -241,6 +256,7 @@ pub struct ToolUsageApiResponse {
 pub struct LimitInfo {
     pub type_name: String,
     pub percentage: u8,
+    pub unit: Option<u64>,
     pub usage: Option<u64>,
     pub current_value: Option<u64>,
     pub remaining: Option<u64>,

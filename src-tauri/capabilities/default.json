@@ -5,10 +5,13 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "updater:default",
+    "process:default",
     {
       "identifier": "opener:allow-open-url",
       "allow": [
-        { "url": "https://z.ai/*" }
+        { "url": "https://z.ai/*" },
+        { "url": "https://github.com/*" }
       ]
     }
   ]

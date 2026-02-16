@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "glm-tray",
-  "version": "0.1.0",
+  "version": "0.0.3-alpha",
   "identifier": "com.kiwina.glm-tray",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -30,7 +30,8 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": "all",
+    "createUpdaterArtifacts": true,
     "category": "Utility",
     "shortDescription": "System tray quota monitor for GLM API keys",
     "longDescription": "A lightweight system tray application that monitors API key quota usage with configurable polling, wake scheduling, exponential backoff, and multi-key support.",
@@ -41,5 +42,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": ["https://github.com/kiwina/glm-tray/releases/latest/download/updater.json"],
+      "dialog": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQxOTUxMjAxQzlDOUY3RDAKUldUUTk4bkpBUktWMGJORmFYeE1KdUNXcCt3Uk8yZjBJMXpIVmo5eHVjY1FJWmFqVmJYQ3VmN3MK"
+    }
   }
 }
