@@ -176,6 +176,9 @@ pub fn run() {
                     runtime_status: Arc::new(RwLock::new(RuntimeStatus::default())),
                     scheduler: Arc::new(Mutex::new(scheduler::SchedulerManager::new())),
                 });
+
+                // Clean up old log files (keep max 7 days)
+                file_logger::cleanup_old_logs(&app_handle).await;
             });
 
             tray::setup_tray(&app_handle)?;
