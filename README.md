@@ -1,48 +1,128 @@
 # GLM Tray
 
-A cross-platform system tray utility for monitoring Z.ai/BigModel API key quota usage and keeping keys warm.
+A simple system tray app to monitor your Z.ai/BigModel API usage and keep your keys active.
 
 ![Tauri](https://img.shields.io/badge/Tauri-v2-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
-## Features
+## What does it do?
 
-- **Quota Monitoring** — Track token and request limits for up to 4 API keys
-- **Keep-Alive Warmup** — Prevent keys from going stale with scheduled wake requests
-- **Flexible Scheduling** — Wake by interval, at specific times, or after quota reset
-- **System Tray** — Minimal UI, lives in your tray with status indicators
-- **Detailed Stats** — View usage limits, model calls, and token consumption (24h window)
-- **JSONL Logging** — Optional request/response logging for debugging
+GLM Tray helps you:
+
+- **Monitor your API quota** — See how many tokens and requests you've used
+- **Keep keys active** — Automatically send requests to prevent keys from becoming stale
+- **Track multiple keys** — Manage up to 4 API keys in one place
+- **Stay informed** — Get visual indicators in your system tray
 
 ## Screenshots
 
 <img src="docs/images/screenshot.jpg" width="50%" alt="Stats View">
 
-## Building
+## Installation
 
-### Prerequisites
+### Download
+
+Grab the latest release for your platform from the [Releases page](https://github.com/kiwina/glm-tray/releases/latest):
+
+| Platform | Download |
+|----------|----------|
+| Windows | `glm-tray_X.X.X_x64-setup.exe` |
+| macOS (Apple Silicon) | `glm-tray_X.X.X_aarch64.dmg` |
+| macOS (Intel) | `glm-tray_X.X.X_x64.dmg` |
+| Linux | `glm-tray_X.X.X_amd64.AppImage` |
+
+### Install
+
+**Windows**
+1. Download and run the `.exe` installer
+2. Follow the installation wizard
+
+**macOS**
+1. Download the `.dmg` file
+2. Open it and drag GLM Tray to Applications
+3. On first launch, right-click → Open (or allow in System Preferences → Privacy & Security)
+
+**Linux**
+1. Download the `.AppImage` file
+2. Make it executable: `chmod +x glm-tray_*.AppImage`
+3. Run it: `./glm-tray_*.AppImage`
+
+## Quick Start
+
+1. **Launch the app** — It will appear in your system tray
+2. **Click the tray icon** — Opens the main window
+3. **Add your API key** — Enter your Z.ai or BigModel API key in Slot 1
+4. **Enable polling** — Toggle on "Enable polling" to start monitoring
+5. **Check your usage** — Stats will appear in the main window
+
+## Features
+
+### Quota Monitoring
+
+View your API usage including:
+- Token limits and consumption
+- Request counts
+- Model-specific usage (24-hour window)
+- Tool usage statistics
+
+### Keep-Alive Scheduling
+
+Prevent your API keys from going stale with three scheduling modes:
+
+| Mode | Description |
+|------|-------------|
+| **Interval** | Send a request every X minutes |
+| **Specific Times** | Send requests at specific times (e.g., 09:00, 12:00, 18:00) |
+| **After Reset** | Send a request X minutes after quota resets |
+
+You can enable multiple modes simultaneously.
+
+### JSONL Logging (Optional)
+
+Enable logging to debug API issues:
+- Logs are stored in daily files
+- Includes full request/response data
+- Located in your app data folder
+
+---
+
+## For Developers
+
+### Building from Source
+
+#### Prerequisites
 
 - [Rust](https://rustup.rs/) (1.70+)
-- [Node.js](https://nodejs.org/) (18+) or [Bun](https://bun.sh/)
+- [Node.js](https://nodejs.org/) (18+)
 - Platform-specific dependencies (see below)
 
-### Linux
+#### Linux Dependencies
 
 ```bash
 sudo apt-get install -y \
   libwebkit2gtk-4.1-dev \
-  libappindicator3-dev \
+  build-essential \
+  curl \
+  wget \
+  file \
+  libssl-dev \
+  libgtk-3-dev \
+  libayatana-appindicator3-dev \
   librsvg2-dev \
-  patchelf
+  patchelf \
+  pkg-config \
+  libsoup-3.0-dev \
+  javascriptcoregtk-4.1 \
+  libjavascriptcoregtk-4.1-dev
 ```
 
-### macOS
+#### macOS
 
 ```bash
 xcode-select --install
 ```
 
-### Windows
+#### Windows
 
 - Visual Studio Build Tools (Desktop development with C++)
 - WebView2 Runtime (usually pre-installed)
@@ -50,45 +130,26 @@ xcode-select --install
 ### Development
 
 ```bash
+# Clone the repository
+git clone https://github.com/kiwina/glm-tray.git
+cd glm-tray
+
 # Install dependencies
-bun install   # or npm ci
+npm install
 
 # Run in development mode
-bun run tauri dev
+npm run tauri dev
 ```
 
 ### Production Build
 
 ```bash
-# Build for current platform
-bun run tauri build
-
-# Cross-compile for Windows (from Linux)
-bun run tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
+npm run tauri build
 ```
 
-The built installer will be in `src-tauri/target/release/bundle/`.
+The built installers will be in `src-tauri/target/release/bundle/`.
 
-## Configuration
-
-Configuration is stored in the platform's application data directory:
-
-| Platform | Path |
-|----------|------|
-| Windows | `%APPDATA%\glm-tray\config.json` |
-| macOS | `~/Library/Application Support/glm-tray/config.json` |
-| Linux | `~/.config/glm-tray/config.json` |
-
-### Per-Slot Settings
-
-- **Name** — Display label for the key
-- **API Key** — Your Z.ai or BigModel API key
-- **Quota URL** — Endpoint for quota monitoring
-- **Request URL** — Endpoint for warmup requests
-- **Wake Mode** — `Interval`, `Times`, or `AfterReset`
-- **Logging** — Enable JSONL request/response logging
-
-## Architecture
+### Project Structure
 
 ```
 src/
@@ -99,14 +160,15 @@ src-tauri/
   src/
     lib.rs         # Tauri setup, commands, state
     config.rs      # Config load/save with migration
-    api_client.rs  # HTTP client for all API calls
+    api_client.rs  # HTTP client for API calls
     scheduler.rs   # Background polling scheduler
     tray.rs        # System tray management
     models.rs      # Data structures
+    update_checker.rs # Auto-update checker
     file_logger.rs # JSONL logging module
 ```
 
-## API Endpoints
+### API Endpoints
 
 | Purpose | URL |
 |---------|-----|
@@ -117,7 +179,17 @@ src-tauri/
 
 For BigModel, replace `api.z.ai` with `open.bigmodel.cn`.
 
-## Logs
+### Configuration
+
+Config is stored in the platform's application data directory:
+
+| Platform | Path |
+|----------|------|
+| Windows | `%APPDATA%\glm-tray\settings.json` |
+| macOS | `~/Library/Application Support/glm-tray/settings.json` |
+| Linux | `~/.config/glm-tray/settings.json` |
+
+### Logs
 
 When logging is enabled, requests and responses are written to daily JSONL files:
 
@@ -125,16 +197,11 @@ When logging is enabled, requests and responses are written to daily JSONL files
 {app_data_dir}/logs/2024-01-15.jsonl
 ```
 
-Each entry includes:
-- Timestamp, slot number, action type
-- Request method, URL, body
-- Response status, body, error (if any)
+---
 
 ## License
 
 MIT
-
----
 
 ## Disclaimer
 
