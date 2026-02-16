@@ -10,7 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "withGlobalTauri": true,
+    "withGlobalTauri": false,
     "windows": [
       {
         "title": "GLM Tray",
@@ -49,6 +49,9 @@
       "endpoints": ["https://github.com/kiwina/glm-tray/releases/latest/download/updater.json"],
       "dialog": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQxOTUxMjAxQzlDOUY3RDAKUldUUTk4bkpBUktWMGJORmFYeE1KdUNXcCt3Uk8yZjBJMXpIVmo5eHVjY1FJWmFqVmJYQ3VmN3MK"
-    }
+    },
+    "process": null,
+    "opener": null,
+    "single-instance": null
   }
 }
