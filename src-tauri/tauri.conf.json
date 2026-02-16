@@ -32,9 +32,6 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
-    "category": "Utility",
-    "shortDescription": "System tray quota monitor for GLM API keys",
-    "longDescription": "A lightweight system tray application that monitors API key quota usage with configurable polling, wake scheduling, exponential backoff, and multi-key support.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
