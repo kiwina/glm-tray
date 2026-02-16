@@ -1,21 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const MAX_SLOTS: usize = 4;
-pub const CURRENT_CONFIG_VERSION: u32 = 2;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WakeMode {
-    Interval,
-    Times,
-    AfterReset,
-}
-
-impl Default for WakeMode {
-    fn default() -> Self {
-        Self::AfterReset
-    }
-}
+pub const CURRENT_CONFIG_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -26,23 +12,17 @@ pub struct KeySlotConfig {
     pub api_key: String,
     pub quota_url: String,
     pub request_url: Option<String>,
-    // Legacy field (kept for backwards compat, computed from enabled flags)
+    // Schedule modes - can enable multiple simultaneously
     #[serde(default)]
-    pub wake_enabled: bool,
-    // Legacy field (kept for migration)
+    pub schedule_interval_enabled: bool,
     #[serde(default)]
-    pub wake_mode: WakeMode,
-    // New: separate enabled flags for each mode
+    pub schedule_times_enabled: bool,
     #[serde(default)]
-    pub wake_interval_enabled: bool,
-    #[serde(default)]
-    pub wake_times_enabled: bool,
-    #[serde(default)]
-    pub wake_after_reset_enabled: bool,
+    pub schedule_after_reset_enabled: bool,
     // Mode-specific settings
-    pub wake_interval_minutes: u64,
-    pub wake_times: Vec<String>,
-    pub wake_after_reset_minutes: u64,
+    pub schedule_interval_minutes: u64,
+    pub schedule_times: Vec<String>,
+    pub schedule_after_reset_minutes: u64,
     pub poll_interval_minutes: u64,
     pub logging: bool,
 }
@@ -56,14 +36,12 @@ impl Default for KeySlotConfig {
             api_key: String::new(),
             quota_url: "https://api.z.ai/api/monitor/usage/quota/limit".to_string(),
             request_url: Some("https://api.z.ai/api/coding/paas/v4/chat/completions".to_string()),
-            wake_enabled: false,
-            wake_mode: WakeMode::AfterReset,
-            wake_interval_enabled: false,
-            wake_times_enabled: false,
-            wake_after_reset_enabled: false,
-            wake_interval_minutes: 60,
-            wake_times: Vec::new(),
-            wake_after_reset_minutes: 1,
+            schedule_interval_enabled: false,
+            schedule_times_enabled: false,
+            schedule_after_reset_enabled: false,
+            schedule_interval_minutes: 60,
+            schedule_times: Vec::new(),
+            schedule_after_reset_minutes: 1,
             poll_interval_minutes: 30,
             logging: false,
         }

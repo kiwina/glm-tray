@@ -86,10 +86,6 @@ impl ApiClient {
     }
 
     pub async fn send_wake_request(&self, cfg: &KeySlotConfig) -> Result<(), String> {
-        if !cfg.wake_enabled {
-            return Ok(());
-        }
-
         let Some(url) = cfg.request_url.clone() else {
             return Ok(());
         };

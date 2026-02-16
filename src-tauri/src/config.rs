@@ -1,45 +1,107 @@
 use std::path::PathBuf;
 
 use log::{debug, info, warn};
+use serde::Deserialize;
 use tauri::{AppHandle, Manager};
 use tokio::fs;
 
-use crate::models::{AppConfig, KeySlotConfig, WakeMode, CURRENT_CONFIG_VERSION, MAX_SLOTS};
+use crate::models::{AppConfig, KeySlotConfig, CURRENT_CONFIG_VERSION, MAX_SLOTS};
 
 const CONFIG_FILE_NAME: &str = "settings.json";
 
+/// Old v2 slot config format (for migration)
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+struct SlotConfigV2 {
+    slot: usize,
+    name: String,
+    enabled: bool,
+    api_key: String,
+    quota_url: String,
+    request_url: Option<String>,
+    wake_enabled: bool,
+    wake_mode: String,
+    wake_interval_enabled: bool,
+    wake_times_enabled: bool,
+    wake_after_reset_enabled: bool,
+    wake_interval_minutes: u64,
+    wake_times: Vec<String>,
+    wake_after_reset_minutes: u64,
+    poll_interval_minutes: u64,
+    logging: bool,
+}
+
+/// Old v2 config format (for migration)
+#[derive(Debug, Clone, Deserialize)]
+struct AppConfigV2 {
+    slots: Vec<SlotConfigV2>,
+    theme: String,
+    config_version: u32,
+}
+
+impl From<SlotConfigV2> for KeySlotConfig {
+    fn from(old: SlotConfigV2) -> Self {
+        Self {
+            slot: old.slot,
+            name: old.name,
+            enabled: old.enabled,
+            api_key: old.api_key,
+            quota_url: old.quota_url,
+            request_url: old.request_url,
+            schedule_interval_enabled: old.wake_interval_enabled,
+            schedule_times_enabled: old.wake_times_enabled,
+            schedule_after_reset_enabled: old.wake_after_reset_enabled,
+            schedule_interval_minutes: old.wake_interval_minutes,
+            schedule_times: old.wake_times,
+            schedule_after_reset_minutes: old.wake_after_reset_minutes,
+            poll_interval_minutes: old.poll_interval_minutes,
+            logging: old.logging,
+        }
+    }
+}
+
+impl From<AppConfigV2> for AppConfig {
+    fn from(old: AppConfigV2) -> Self {
+        Self {
+            slots: old.slots.into_iter().map(|s| s.into()).collect(),
+            theme: old.theme,
+            config_version: old.config_version,
+        }
+    }
+}
+
 /// Apply forward migrations from the persisted version to the current version.
 /// Each migration step handles exactly one version bump.
-fn migrate(mut cfg: AppConfig) -> AppConfig {
+fn migrate(raw_json: &str) -> Result<AppConfig, String> {
+    // Try to parse as the current version first
+    if let Ok(cfg) = serde_json::from_str::<AppConfig>(raw_json) {
+        if cfg.config_version >= CURRENT_CONFIG_VERSION {
+            return Ok(cfg);
+        }
+    }
+
+    // Need to migrate - start with v2 format
+    let mut cfg: AppConfig = if let Ok(v2) = serde_json::from_str::<AppConfigV2>(raw_json) {
+        v2.into()
+    } else {
+        // Fallback: try to parse as current format (might be partially migrated)
+        serde_json::from_str::<AppConfig>(raw_json)
+            .map_err(|err| format!("invalid config JSON: {err}"))?
+    };
+
     let from = cfg.config_version;
 
-    // version 0 → 1: initial versioned schema (no structural changes, just stamp)
-    if cfg.config_version < 1 {
-        info!("migrating config v0 → v1 (adding version stamp)");
-        cfg.config_version = 1;
+    // version 2 → 3: rename wake_* to schedule_*
+    if from < 3 {
+        info!("migrating config v{from} → v3 (rename wake_* to schedule_*)");
+        cfg.config_version = 3;
     }
 
-    // version 1 → 2: separate enabled flags per wake mode
-    if cfg.config_version < 2 {
-        info!("migrating config v1 → v2 (separate wake mode enabled flags)");
-        for slot in &mut cfg.slots {
-            // If wake was enabled, enable the corresponding mode's flag
-            if slot.wake_enabled {
-                match slot.wake_mode {
-                    WakeMode::Interval => slot.wake_interval_enabled = true,
-                    WakeMode::Times => slot.wake_times_enabled = true,
-                    WakeMode::AfterReset => slot.wake_after_reset_enabled = true,
-                }
-            }
-        }
-        cfg.config_version = 2;
-    }
-
-    if from != cfg.config_version {
+    if from != cfg.config_version && from > 0 {
         info!("config migrated from v{from} → v{}", cfg.config_version);
     }
 
-    cfg
+    Ok(cfg)
 }
 
 /// Clamp, trim, and sanitise every field so the rest of the app can trust it.
@@ -80,15 +142,15 @@ fn validate(mut cfg: AppConfig) -> AppConfig {
 
         // -- interval bounds (min 1, max 1440 = 24 h) --
         slot.poll_interval_minutes = slot.poll_interval_minutes.clamp(1, 1440);
-        slot.wake_interval_minutes = slot.wake_interval_minutes.clamp(1, 1440);
-        slot.wake_after_reset_minutes = slot.wake_after_reset_minutes.clamp(1, 1440);
+        slot.schedule_interval_minutes = slot.schedule_interval_minutes.clamp(1, 1440);
+        slot.schedule_after_reset_minutes = slot.schedule_after_reset_minutes.clamp(1, 1440);
 
-        // -- wake_times: max 5 entries, trim, drop blanks, validate HH:MM --
-        if slot.wake_times.len() > 5 {
-            slot.wake_times.truncate(5);
+        // -- schedule_times: max 5 entries, trim, drop blanks, validate HH:MM --
+        if slot.schedule_times.len() > 5 {
+            slot.schedule_times.truncate(5);
         }
-        slot.wake_times = slot
-            .wake_times
+        slot.schedule_times = slot
+            .schedule_times
             .iter()
             .map(|v| v.trim().to_string())
             .filter(|v| {
@@ -101,13 +163,13 @@ fn validate(mut cfg: AppConfig) -> AppConfig {
                     && v[..2].parse::<u8>().map_or(false, |h| h < 24)
                     && v[3..].parse::<u8>().map_or(false, |m| m < 60);
                 if !valid {
-                    warn!("slot {}: dropping invalid wake_time '{v}'", slot.slot);
+                    warn!("slot {}: dropping invalid schedule_time '{v}'", slot.slot);
                 }
                 valid
             })
             .collect();
 
-        // -- if key is blank, disable polling + wake for safety --
+        // -- if key is blank, disable polling for safety --
         if slot.api_key.is_empty() && slot.enabled {
             warn!("slot {}: no API key, force-disabling", slot.slot);
             slot.enabled = false;
@@ -142,10 +204,7 @@ pub async fn load_config(app: &AppHandle) -> Result<AppConfig, String> {
         .await
         .map_err(|err| format!("failed to read config: {err}"))?;
 
-    let parsed: AppConfig =
-        serde_json::from_str(&content).map_err(|err| format!("invalid config JSON: {err}"))?;
-
-    let migrated = migrate(parsed);
+    let migrated = migrate(&content)?;
     let validated = validate(migrated);
 
     // Re-save if migration or validation changed anything

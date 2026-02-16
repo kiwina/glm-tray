@@ -41,22 +41,21 @@ export function renderSettingsTab(tc: HTMLDivElement): void {
             <input id="api-key" type="password" class="input input-sm input-border w-full" value="${esc(s.api_key)}" placeholder="Bearer ..." autocomplete="off" />
           </div>
 
-          <div class="flex gap-3">
-            <div class="flex flex-col gap-1 flex-1">
-              <label class="text-xs font-medium opacity-60">Name</label>
-              <input id="slot-name" type="text" class="input input-sm input-border w-full" value="${esc(s.name)}" placeholder="e.g. Production" />
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-medium opacity-60">Name</label>
+            <input id="slot-name" type="text" class="input input-sm input-border w-full" value="${esc(s.name)}" placeholder="e.g. Production" />
+          </div>
+
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2 flex-1">
+              <span class="text-sm font-medium">Poll every</span>
+              <input id="poll-interval" type="number" class="input input-sm input-border w-16" min="1" step="1" value="${s.poll_interval_minutes}" />
+              <span class="text-xs opacity-40">min</span>
             </div>
-            <div class="flex flex-col gap-1 w-20">
-              <label class="text-xs font-medium opacity-60">Poll (min)</label>
-              <input id="poll-interval" type="number" class="input input-sm input-border w-full" min="1" step="1" value="${s.poll_interval_minutes}" />
-            </div>
+            <input id="enabled" type="checkbox" class="toggle toggle-sm toggle-primary" ${s.enabled ? "checked" : ""} />
           </div>
 
           <div class="flex gap-4 mt-1">
-            <label class="flex cursor-pointer items-center gap-2 text-xs">
-              <input id="enabled" type="checkbox" class="toggle toggle-xs toggle-primary" ${s.enabled ? "checked" : ""} />
-              Enable polling
-            </label>
             <label class="flex cursor-pointer items-center gap-2 text-xs">
               <input id="logging" type="checkbox" class="toggle toggle-xs toggle-primary" ${s.logging ? "checked" : ""} />
               Logging

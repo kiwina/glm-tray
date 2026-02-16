@@ -1,4 +1,3 @@
-export type WakeMode = "interval" | "times" | "after_reset";
 export type View = "dashboard" | "1" | "2" | "3" | "4";
 export type KeyTab = "stats" | "schedule" | "settings";
 export type Platform = "zai" | "bigmodel";
@@ -10,17 +9,14 @@ export interface KeySlotConfig {
   api_key: string;
   quota_url: string;
   request_url: string | null;
-  // Legacy (computed from enabled flags)
-  wake_enabled: boolean;
-  wake_mode: WakeMode;
-  // New: separate enabled flags per mode
-  wake_interval_enabled: boolean;
-  wake_times_enabled: boolean;
-  wake_after_reset_enabled: boolean;
+  // Schedule modes - can enable multiple simultaneously
+  schedule_interval_enabled: boolean;
+  schedule_times_enabled: boolean;
+  schedule_after_reset_enabled: boolean;
   // Mode-specific settings
-  wake_interval_minutes: number;
-  wake_times: string[];
-  wake_after_reset_minutes: number;
+  schedule_interval_minutes: number;
+  schedule_times: string[];
+  schedule_after_reset_minutes: number;
   poll_interval_minutes: number;
   logging: boolean;
 }

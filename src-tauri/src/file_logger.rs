@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{Local, NaiveDateTime, TimeZone};
 use log::info;
 use serde::Serialize;
 use std::path::PathBuf;
@@ -55,11 +55,13 @@ pub async fn cleanup_old_logs(app: &tauri::AppHandle) {
         let path = entry.path();
         if path.extension().map_or(false, |ext| ext == "jsonl") {
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                if let Ok(file_date) = Local.datetime_from_str(&format!("{stem} 00:00:00"), "%Y-%m-%d %H:%M:%S") {
-                    if file_date < cutoff {
-                        match fs::remove_file(&path).await {
-                            Ok(()) => info!("deleted old log file: {}", path.display()),
-                            Err(e) => info!("failed to delete old log {}: {}", path.display(), e),
+                if let Ok(naive) = NaiveDateTime::parse_from_str(&format!("{stem} 00:00:00"), "%Y-%m-%d %H:%M:%S") {
+                    if let Some(file_date) = Local.from_local_datetime(&naive).single() {
+                        if file_date < cutoff {
+                            match fs::remove_file(&path).await {
+                                Ok(()) => info!("deleted old log file: {}", path.display()),
+                                Err(e) => info!("failed to delete old log {}: {}", path.display(), e),
+                            }
                         }
                     }
                 }

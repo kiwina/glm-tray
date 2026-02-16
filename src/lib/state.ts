@@ -14,12 +14,12 @@ export let statsLoading = false;
 
 // Schedule tab state
 export let scheduleSavedSnapshot: {
-  wake_interval_enabled: boolean;
-  wake_times_enabled: boolean;
-  wake_after_reset_enabled: boolean;
-  wake_interval_minutes: number;
-  wake_after_reset_minutes: number;
-  wake_times: string[];
+  schedule_interval_enabled: boolean;
+  schedule_times_enabled: boolean;
+  schedule_after_reset_enabled: boolean;
+  schedule_interval_minutes: number;
+  schedule_after_reset_minutes: number;
+  schedule_times: string[];
 } | null = null;
 
 // Setters

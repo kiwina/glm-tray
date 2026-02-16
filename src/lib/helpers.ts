@@ -18,14 +18,12 @@ export function defaultSlot(slot: number): KeySlotConfig {
     api_key: "",
     quota_url: "https://api.z.ai/api/monitor/usage/quota/limit",
     request_url: "https://api.z.ai/api/coding/paas/v4/chat/completions",
-    wake_enabled: false,
-    wake_mode: "after_reset",
-    wake_interval_enabled: false,
-    wake_times_enabled: false,
-    wake_after_reset_enabled: false,
-    wake_interval_minutes: 60,
-    wake_times: [],
-    wake_after_reset_minutes: 1,
+    schedule_interval_enabled: false,
+    schedule_times_enabled: false,
+    schedule_after_reset_enabled: false,
+    schedule_interval_minutes: 60,
+    schedule_times: [],
+    schedule_after_reset_minutes: 1,
     poll_interval_minutes: 30,
     logging: false,
   };
@@ -64,15 +62,15 @@ export function normalizeConfig(config: AppConfig): AppConfig {
         1,
         Number(current.poll_interval_minutes) || 30,
       ),
-      wake_interval_minutes: Math.max(
+      schedule_interval_minutes: Math.max(
         1,
-        Number(current.wake_interval_minutes) || 60,
+        Number(current.schedule_interval_minutes) || 60,
       ),
-      wake_after_reset_minutes: Math.max(
+      schedule_after_reset_minutes: Math.max(
         1,
-        Number(current.wake_after_reset_minutes) || 1,
+        Number(current.schedule_after_reset_minutes) || 1,
       ),
-      wake_times: (current.wake_times ?? []).slice(0, 5),
+      schedule_times: (current.schedule_times ?? []).slice(0, 5),
     };
   });
   return { slots, theme: config.theme ?? "glm" };

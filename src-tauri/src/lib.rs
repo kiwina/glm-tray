@@ -160,6 +160,19 @@ pub fn run() {
 
     tauri::Builder::default()
         .setup(|app| {
+            // Single-instance plugin must be registered first
+            #[cfg(desktop)]
+            {
+                let app_handle = app.handle().clone();
+                app.handle().plugin(tauri_plugin_single_instance::init(move |_app, _args, _cwd| {
+                    // Focus the main window when a second instance is attempted
+                    if let Some(win) = app_handle.get_webview_window("main") {
+                        let _ = win.set_focus();
+                        let _ = win.show();
+                    }
+                }))?;
+            }
+
             let app_handle = app.handle().clone();
 
             tauri::async_runtime::block_on(async {

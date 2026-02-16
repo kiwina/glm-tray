@@ -10,17 +10,17 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
   setHeaderActions(warmupButtonHtml(s.slot));
   setTimeout(() => setupWarmupButton(), 0);
 
-  const times = [0, 1, 2, 3, 4].map((i) => s.wake_times[i] ?? "");
+  const times = [0, 1, 2, 3, 4].map((i) => s.schedule_times[i] ?? "");
 
   // Only snapshot the "saved" state on first render
   if (!preserveSnapshot || !scheduleSavedSnapshot) {
     setScheduleSavedSnapshot({
-      wake_interval_enabled: s.wake_interval_enabled,
-      wake_times_enabled: s.wake_times_enabled,
-      wake_after_reset_enabled: s.wake_after_reset_enabled,
-      wake_interval_minutes: s.wake_interval_minutes,
-      wake_after_reset_minutes: s.wake_after_reset_minutes,
-      wake_times: [...s.wake_times],
+      schedule_interval_enabled: s.schedule_interval_enabled,
+      schedule_times_enabled: s.schedule_times_enabled,
+      schedule_after_reset_enabled: s.schedule_after_reset_enabled,
+      schedule_interval_minutes: s.schedule_interval_minutes,
+      schedule_after_reset_minutes: s.schedule_after_reset_minutes,
+      schedule_times: [...s.schedule_times],
     });
   }
   const snapshot = scheduleSavedSnapshot;
@@ -37,10 +37,10 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
                 <path d="M3 3v5h5"/>
               </svg>
               <span class="text-sm font-medium">After reset + offset</span>
-              <input id="wake-after-reset" type="number" class="input input-sm input-border w-20" min="1" max="1440" step="1" value="${s.wake_after_reset_minutes}" />
+              <input id="schedule-after-reset" type="number" class="input input-sm input-border w-20" min="1" max="1440" step="1" value="${s.schedule_after_reset_minutes}" />
               <span class="text-xs opacity-40">min</span>
             </div>
-            <input id="wake-after-reset-enabled" type="checkbox" class="toggle toggle-sm toggle-primary" ${s.wake_after_reset_enabled ? "checked" : ""} />
+            <input id="schedule-after-reset-enabled" type="checkbox" class="toggle toggle-sm toggle-primary" ${s.schedule_after_reset_enabled ? "checked" : ""} />
           </div>
           <p class="text-[10px] opacity-40 pl-6">Wake N minutes after quota window resets</p>
         </div>
@@ -56,10 +56,10 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
                 <polyline points="12 6 12 12 16 14"/>
               </svg>
               <span class="text-sm font-medium">Every</span>
-              <input id="wake-interval" type="number" class="input input-sm input-border w-20" min="1" max="1440" step="1" value="${s.wake_interval_minutes}" />
+              <input id="schedule-interval" type="number" class="input input-sm input-border w-20" min="1" max="1440" step="1" value="${s.schedule_interval_minutes}" />
               <span class="text-xs opacity-40">min</span>
             </div>
-            <input id="wake-interval-enabled" type="checkbox" class="toggle toggle-sm toggle-primary" ${s.wake_interval_enabled ? "checked" : ""} />
+            <input id="schedule-interval-enabled" type="checkbox" class="toggle toggle-sm toggle-primary" ${s.schedule_interval_enabled ? "checked" : ""} />
           </div>
           <p class="text-[10px] opacity-40 pl-6">Periodic wake on a fixed interval</p>
         </div>
@@ -78,7 +78,7 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
               </svg>
               <span class="text-sm font-medium">Specific times</span>
             </div>
-            <input id="wake-times-enabled" type="checkbox" class="toggle toggle-sm toggle-primary" ${s.wake_times_enabled ? "checked" : ""} />
+            <input id="schedule-times-enabled" type="checkbox" class="toggle toggle-sm toggle-primary" ${s.schedule_times_enabled ? "checked" : ""} />
           </div>
           <div class="pl-6">
             <div class="flex gap-1">
@@ -120,8 +120,8 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
     }
 
     // Validate number inputs - must be valid numbers in range
-    const intervalVal = (document.getElementById("wake-interval") as HTMLInputElement).value;
-    const afterResetVal = (document.getElementById("wake-after-reset") as HTMLInputElement).value;
+    const intervalVal = (document.getElementById("schedule-interval") as HTMLInputElement).value;
+    const afterResetVal = (document.getElementById("schedule-after-reset") as HTMLInputElement).value;
 
     const interval = Number(intervalVal);
     const afterReset = Number(afterResetVal);
@@ -137,19 +137,19 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
   }
 
   function isScheduleDirty(): boolean {
-    const intervalEnabled = (document.getElementById("wake-interval-enabled") as HTMLInputElement).checked;
-    const timesEnabled = (document.getElementById("wake-times-enabled") as HTMLInputElement).checked;
-    const afterResetEnabled = (document.getElementById("wake-after-reset-enabled") as HTMLInputElement).checked;
-    const interval = Math.max(1, Number((document.getElementById("wake-interval") as HTMLInputElement).value) || 1);
-    const afterReset = Math.max(1, Number((document.getElementById("wake-after-reset") as HTMLInputElement).value) || 1);
+    const intervalEnabled = (document.getElementById("schedule-interval-enabled") as HTMLInputElement).checked;
+    const timesEnabled = (document.getElementById("schedule-times-enabled") as HTMLInputElement).checked;
+    const afterResetEnabled = (document.getElementById("schedule-after-reset-enabled") as HTMLInputElement).checked;
+    const interval = Math.max(1, Number((document.getElementById("schedule-interval") as HTMLInputElement).value) || 1);
+    const afterReset = Math.max(1, Number((document.getElementById("schedule-after-reset") as HTMLInputElement).value) || 1);
     const times = getFormTimes();
 
-    return intervalEnabled !== snapshot!.wake_interval_enabled
-      || timesEnabled !== snapshot!.wake_times_enabled
-      || afterResetEnabled !== snapshot!.wake_after_reset_enabled
-      || interval !== snapshot!.wake_interval_minutes
-      || afterReset !== snapshot!.wake_after_reset_minutes
-      || times.join(",") !== snapshot!.wake_times.join(",");
+    return intervalEnabled !== snapshot!.schedule_interval_enabled
+      || timesEnabled !== snapshot!.schedule_times_enabled
+      || afterResetEnabled !== snapshot!.schedule_after_reset_enabled
+      || interval !== snapshot!.schedule_interval_minutes
+      || afterReset !== snapshot!.schedule_after_reset_minutes
+      || times.join(",") !== snapshot!.schedule_times.join(",");
   }
 
   function checkDirty(): void {
@@ -172,35 +172,23 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
       const n = slotByView(currentView);
 
       // Get enabled flags
-      n.wake_interval_enabled = (document.getElementById("wake-interval-enabled") as HTMLInputElement).checked;
-      n.wake_times_enabled = (document.getElementById("wake-times-enabled") as HTMLInputElement).checked;
-      n.wake_after_reset_enabled = (document.getElementById("wake-after-reset-enabled") as HTMLInputElement).checked;
-
-      // Compute legacy wake_enabled (true if any mode is enabled)
-      n.wake_enabled = n.wake_interval_enabled || n.wake_times_enabled || n.wake_after_reset_enabled;
+      n.schedule_interval_enabled = (document.getElementById("schedule-interval-enabled") as HTMLInputElement).checked;
+      n.schedule_times_enabled = (document.getElementById("schedule-times-enabled") as HTMLInputElement).checked;
+      n.schedule_after_reset_enabled = (document.getElementById("schedule-after-reset-enabled") as HTMLInputElement).checked;
 
       // Get mode-specific settings
-      n.wake_interval_minutes = Math.max(1, Number((document.getElementById("wake-interval") as HTMLInputElement).value) || 1);
-      n.wake_after_reset_minutes = Math.max(1, Number((document.getElementById("wake-after-reset") as HTMLInputElement).value) || 1);
+      n.schedule_interval_minutes = Math.max(1, Number((document.getElementById("schedule-interval") as HTMLInputElement).value) || 1);
+      n.schedule_after_reset_minutes = Math.max(1, Number((document.getElementById("schedule-after-reset") as HTMLInputElement).value) || 1);
 
       // Get times - validate any entered time
-      const wakeTimes = getFormTimes();
-      const invalid = wakeTimes.find((v) => !isValidHm(v));
+      const scheduleTimes = getFormTimes();
+      const invalid = scheduleTimes.find((v) => !isValidHm(v));
       if (invalid) {
         errEl.textContent = `Invalid time: ${invalid}. Use HH:MM (24h).`;
         errEl.hidden = false;
         return;
       }
-      n.wake_times = wakeTimes;
-
-      // Set legacy wake_mode based on first enabled mode (for backwards compat)
-      if (n.wake_after_reset_enabled) {
-        n.wake_mode = "after_reset";
-      } else if (n.wake_interval_enabled) {
-        n.wake_mode = "interval";
-      } else if (n.wake_times_enabled) {
-        n.wake_mode = "times";
-      }
+      n.schedule_times = scheduleTimes;
 
       setConfigState(await backendInvoke<typeof configState>("save_settings", { settings: configState }));
 
@@ -212,12 +200,12 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
 
       // Update saved snapshot
       setScheduleSavedSnapshot({
-        wake_interval_enabled: n.wake_interval_enabled,
-        wake_times_enabled: n.wake_times_enabled,
-        wake_after_reset_enabled: n.wake_after_reset_enabled,
-        wake_interval_minutes: n.wake_interval_minutes,
-        wake_after_reset_minutes: n.wake_after_reset_minutes,
-        wake_times: [...n.wake_times],
+        schedule_interval_enabled: n.schedule_interval_enabled,
+        schedule_times_enabled: n.schedule_times_enabled,
+        schedule_after_reset_enabled: n.schedule_after_reset_enabled,
+        schedule_interval_minutes: n.schedule_interval_minutes,
+        schedule_after_reset_minutes: n.schedule_after_reset_minutes,
+        schedule_times: [...n.schedule_times],
       });
 
       render();

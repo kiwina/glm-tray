@@ -424,32 +424,32 @@ fn should_fire_wake(
     slot_cfg: &KeySlotConfig,
     schedule: &SlotSchedule,
 ) -> Option<String> {
-    // Check if any wake mode is enabled
-    let any_enabled = slot_cfg.wake_interval_enabled
-        || slot_cfg.wake_times_enabled
-        || slot_cfg.wake_after_reset_enabled;
+    // Check if any schedule mode is enabled
+    let any_enabled = slot_cfg.schedule_interval_enabled
+        || slot_cfg.schedule_times_enabled
+        || slot_cfg.schedule_after_reset_enabled;
 
     if !any_enabled {
         return None;
     }
 
     // Check interval mode
-    if slot_cfg.wake_interval_enabled {
-        let interval = Duration::from_secs(slot_cfg.wake_interval_minutes.max(1) * 60);
+    if slot_cfg.schedule_interval_enabled {
+        let interval = Duration::from_secs(slot_cfg.schedule_interval_minutes.max(1) * 60);
         if schedule.last_interval_fire.elapsed() >= interval {
             return Some(format!(
                 "interval mode ({} min elapsed)",
-                slot_cfg.wake_interval_minutes
+                slot_cfg.schedule_interval_minutes
             ));
         }
     }
 
     // Check times mode
-    if slot_cfg.wake_times_enabled {
+    if slot_cfg.schedule_times_enabled {
         let now = Local::now();
         let current_hm = format!("{:02}:{:02}", now.hour(), now.minute());
 
-        if slot_cfg.wake_times.iter().any(|value| value == &current_hm) {
+        if slot_cfg.schedule_times.iter().any(|value| value == &current_hm) {
             let marker = format!("{}-{}", now.format("%Y-%m-%d"), current_hm);
             if schedule.last_times_marker.as_ref() != Some(&marker) {
                 return Some(format!("times mode (matched {})", current_hm));
@@ -458,15 +458,15 @@ fn should_fire_wake(
     }
 
     // Check after-reset mode
-    if slot_cfg.wake_after_reset_enabled {
+    if slot_cfg.schedule_after_reset_enabled {
         if let Some(next_reset) = schedule.next_reset_epoch_ms {
-            let target = next_reset + (slot_cfg.wake_after_reset_minutes.max(1) as i64 * 60_000);
+            let target = next_reset + (slot_cfg.schedule_after_reset_minutes.max(1) as i64 * 60_000);
             let now_ms = Local::now().timestamp_millis();
 
             if now_ms >= target && schedule.last_reset_marker != Some(next_reset) {
                 return Some(format!(
                     "after-reset mode (reset + {} min)",
-                    slot_cfg.wake_after_reset_minutes
+                    slot_cfg.schedule_after_reset_minutes
                 ));
             }
         }
@@ -483,23 +483,23 @@ fn update_schedule_markers(
     new_schedule: &mut SlotSchedule,
 ) {
     // Always update interval marker if enabled
-    if slot_cfg.wake_interval_enabled {
+    if slot_cfg.schedule_interval_enabled {
         new_schedule.last_interval_fire = Instant::now();
     }
 
     // Update times marker if enabled and matched
-    if slot_cfg.wake_times_enabled {
+    if slot_cfg.schedule_times_enabled {
         let now = Local::now();
         let current_hm = format!("{:02}:{:02}", now.hour(), now.minute());
-        if slot_cfg.wake_times.iter().any(|value| value == &current_hm) {
+        if slot_cfg.schedule_times.iter().any(|value| value == &current_hm) {
             new_schedule.last_times_marker = Some(format!("{}-{}", now.format("%Y-%m-%d"), current_hm));
         }
     }
 
     // Update after-reset marker if enabled
-    if slot_cfg.wake_after_reset_enabled {
+    if slot_cfg.schedule_after_reset_enabled {
         if let Some(next_reset) = old_schedule.next_reset_epoch_ms {
-            let target = next_reset + (slot_cfg.wake_after_reset_minutes.max(1) as i64 * 60_000);
+            let target = next_reset + (slot_cfg.schedule_after_reset_minutes.max(1) as i64 * 60_000);
             let now_ms = Local::now().timestamp_millis();
             if now_ms >= target {
                 new_schedule.last_reset_marker = Some(next_reset);
