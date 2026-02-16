@@ -30,6 +30,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Sync version from tag
+        shell: bash
         run: |
           VERSION="${{ github.ref_name }}"
           # Remove 'v' prefix if present
@@ -39,8 +40,8 @@ jobs:
           # Update tauri.conf.json
           jq --arg ver "$VER" '.version = $ver' src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
 
-          # Update Cargo.toml
-          sed -i "s/^version = \".*\"/version = \"$VER\"/" src-tauri/Cargo.toml
+          # Update Cargo.toml (use perl for cross-platform compatibility)
+          perl -pi -e "s/^version = \".*\"/version = \"$VER\"/" src-tauri/Cargo.toml
 
           echo "Updated versions to $VER"
 
