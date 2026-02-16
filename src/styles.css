@@ -147,8 +147,9 @@ body {
   transition: background-color 0ms, border-color 100ms, box-shadow 300ms;
 }
 
-/* Compact inputs in schedule form - smaller focus ring */
-#schedule-form input:focus {
+/* Compact inputs in forms - smaller focus ring */
+#schedule-form input:focus,
+#settings-form input:focus {
   outline: none;
   box-shadow: 0 0 0 1px var(--color-primary);
 }

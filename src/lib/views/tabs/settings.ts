@@ -1,15 +1,16 @@
 import type { AppConfig, Platform } from "../../types";
 import { PLATFORMS, detectPlatform } from "../../constants";
 import { currentView, configState, setConfigState, setCurrentView } from "../../state";
-import { esc, slotByView, defaultSlot, setHeaderActions } from "../../helpers";
+import { esc, slotByView, defaultSlot, setHeaderActions, warmupButtonHtml, setupWarmupButton } from "../../helpers";
 import { backendInvoke } from "../../api";
 import { render } from "../render";
 
 export function renderSettingsTab(tc: HTMLDivElement): void {
   const s = slotByView(currentView);
 
-  // Set header: key name
-  setHeaderActions(`<span class="text-sm font-normal opacity-60">${esc(s.name || `Key ${s.slot}`)}</span>`);
+  // Set header: warmup button
+  setHeaderActions(warmupButtonHtml(s.slot));
+  setTimeout(() => setupWarmupButton(), 0);
 
   const platform = detectPlatform(s.quota_url);
 
@@ -28,16 +29,6 @@ export function renderSettingsTab(tc: HTMLDivElement): void {
       <div class="card bg-base-100 card-border border-base-300 card-sm">
         <div class="card-body p-4 gap-3">
           <div class="flex flex-col gap-1">
-            <label class="text-xs font-medium opacity-60">Name</label>
-            <input id="slot-name" type="text" class="input input-sm input-border w-full" value="${esc(s.name)}" placeholder="e.g. Production" />
-          </div>
-
-          <div class="flex flex-col gap-1">
-            <label class="text-xs font-medium opacity-60">API Key</label>
-            <input id="api-key" type="password" class="input input-sm input-border w-full" value="${esc(s.api_key)}" placeholder="Bearer ..." autocomplete="off" />
-          </div>
-
-          <div class="flex flex-col gap-1">
             <label class="text-xs font-medium opacity-60">Platform</label>
             <div class="join w-full">
               <input class="join-item btn btn-sm flex-1" type="radio" name="platform" aria-label="Z.ai" value="zai" ${platform === "zai" ? "checked" : ""} />
@@ -46,8 +37,19 @@ export function renderSettingsTab(tc: HTMLDivElement): void {
           </div>
 
           <div class="flex flex-col gap-1">
-            <label class="text-xs font-medium opacity-60">Poll interval (minutes)</label>
-            <input id="poll-interval" type="number" class="input input-sm input-border w-full" min="1" step="1" value="${s.poll_interval_minutes}" />
+            <label class="text-xs font-medium opacity-60">API Key</label>
+            <input id="api-key" type="password" class="input input-sm input-border w-full" value="${esc(s.api_key)}" placeholder="Bearer ..." autocomplete="off" />
+          </div>
+
+          <div class="flex gap-3">
+            <div class="flex flex-col gap-1 flex-1">
+              <label class="text-xs font-medium opacity-60">Name</label>
+              <input id="slot-name" type="text" class="input input-sm input-border w-full" value="${esc(s.name)}" placeholder="e.g. Production" />
+            </div>
+            <div class="flex flex-col gap-1 w-20">
+              <label class="text-xs font-medium opacity-60">Poll (min)</label>
+              <input id="poll-interval" type="number" class="input input-sm input-border w-full" min="1" step="1" value="${s.poll_interval_minutes}" />
+            </div>
           </div>
 
           <div class="flex gap-4 mt-1">

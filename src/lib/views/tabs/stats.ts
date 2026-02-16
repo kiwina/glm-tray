@@ -1,17 +1,15 @@
 import { currentView, latestRuntime, cachedStats, statsLoading, deleteCachedStats } from "../../state";
-import { formatTokens, radialGauge, setHeaderActions, esc, slotByView } from "../../helpers";
+import { formatTokens, radialGauge, setHeaderActions, warmupButtonHtml, setupWarmupButton } from "../../helpers";
 import { loadStats } from "../../api";
 
 export function renderStatsTab(tc: HTMLDivElement): void {
   const slotNum = Number(currentView);
-  const s = slotByView(currentView);
   const rtSlot = latestRuntime?.slots.find((rs) => rs.slot === slotNum);
   const stats = cachedStats[slotNum];
 
-  // Set header: key name with level badge + refresh button
-  const levelHtml = stats?.level ? ` <span class="badge badge-sm badge-soft opacity-50 ml-1 align-middle">${esc(stats.level)}</span>` : "";
+  // Set header: warmup + refresh buttons
   setHeaderActions(`
-    <span class="text-sm font-normal opacity-60">${esc(s.name || `Key ${slotNum}`)}${levelHtml}</span>
+    ${warmupButtonHtml(slotNum)}
     <button class="btn btn-xs btn-ghost btn-circle refresh-header-btn" title="Refresh stats">
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
@@ -22,8 +20,9 @@ export function renderStatsTab(tc: HTMLDivElement): void {
     </button>
   `);
 
-  // Add refresh button handler
+  // Add button handlers
   setTimeout(() => {
+    setupWarmupButton();
     document.querySelector(".refresh-header-btn")?.addEventListener("click", () => {
       deleteCachedStats(slotNum);
       renderStatsTab(tc);

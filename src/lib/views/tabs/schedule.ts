@@ -1,13 +1,14 @@
 import { currentView, configState, scheduleSavedSnapshot, setScheduleSavedSnapshot, setConfigState } from "../../state";
-import { esc, slotByView, isValidHm, setHeaderActions } from "../../helpers";
+import { esc, slotByView, isValidHm, setHeaderActions, warmupButtonHtml, setupWarmupButton } from "../../helpers";
 import { backendInvoke } from "../../api";
 import { render } from "../render";
 
 export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false): void {
   const s = slotByView(currentView);
 
-  // Set header: key name
-  setHeaderActions(`<span class="text-sm font-normal opacity-60">${esc(s.name || `Key ${s.slot}`)}</span>`);
+  // Set header: warmup button
+  setHeaderActions(warmupButtonHtml(s.slot));
+  setTimeout(() => setupWarmupButton(), 0);
 
   const times = [0, 1, 2, 3, 4].map((i) => s.wake_times[i] ?? "");
 
@@ -80,12 +81,12 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
             <input id="wake-times-enabled" type="checkbox" class="toggle toggle-sm toggle-primary" ${s.wake_times_enabled ? "checked" : ""} />
           </div>
           <div class="pl-6">
-            <div class="flex flex-wrap gap-1.5">
-              <input class="input input-sm input-border w-[72px] wake-time text-center" data-index="0" type="text" placeholder="--:--" value="${esc(times[0])}" />
-              <input class="input input-sm input-border w-[72px] wake-time text-center" data-index="1" type="text" placeholder="--:--" value="${esc(times[1])}" />
-              <input class="input input-sm input-border w-[72px] wake-time text-center" data-index="2" type="text" placeholder="--:--" value="${esc(times[2])}" />
-              <input class="input input-sm input-border w-[72px] wake-time text-center" data-index="3" type="text" placeholder="--:--" value="${esc(times[3])}" />
-              <input class="input input-sm input-border w-[72px] wake-time text-center" data-index="4" type="text" placeholder="--:--" value="${esc(times[4])}" />
+            <div class="flex gap-1">
+              <input class="input input-sm input-border w-12 wake-time text-center !px-1" data-index="0" type="text" placeholder="--:--" value="${esc(times[0])}" />
+              <input class="input input-sm input-border w-12 wake-time text-center !px-1" data-index="1" type="text" placeholder="--:--" value="${esc(times[1])}" />
+              <input class="input input-sm input-border w-12 wake-time text-center !px-1" data-index="2" type="text" placeholder="--:--" value="${esc(times[2])}" />
+              <input class="input input-sm input-border w-12 wake-time text-center !px-1" data-index="3" type="text" placeholder="--:--" value="${esc(times[3])}" />
+              <input class="input input-sm input-border w-12 wake-time text-center !px-1" data-index="4" type="text" placeholder="--:--" value="${esc(times[4])}" />
             </div>
             <p class="text-[10px] opacity-40 mt-1.5">Up to 5 times in 24h HH:MM format</p>
           </div>
@@ -99,12 +100,40 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
 
   const form = document.getElementById("schedule-form") as HTMLFormElement;
   const saveBtn = document.getElementById("schedule-save-btn") as HTMLButtonElement;
+  const errEl = document.getElementById("form-error") as HTMLParagraphElement;
 
   function getFormTimes(): string[] {
     return Array.from(document.querySelectorAll<HTMLInputElement>(".wake-time"))
       .map((el) => el.value.trim())
       .filter((v) => v.length > 0)
       .slice(0, 5);
+  }
+
+  function isFormValid(): boolean {
+    // Validate time inputs - must be empty or valid HH:MM
+    const timeInputs = document.querySelectorAll<HTMLInputElement>(".wake-time");
+    for (const input of timeInputs) {
+      const val = input.value.trim();
+      if (val && !isValidHm(val)) {
+        return false;
+      }
+    }
+
+    // Validate number inputs - must be valid numbers in range
+    const intervalVal = (document.getElementById("wake-interval") as HTMLInputElement).value;
+    const afterResetVal = (document.getElementById("wake-after-reset") as HTMLInputElement).value;
+
+    const interval = Number(intervalVal);
+    const afterReset = Number(afterResetVal);
+
+    if (intervalVal && (isNaN(interval) || interval < 1 || interval > 1440)) {
+      return false;
+    }
+    if (afterResetVal && (isNaN(afterReset) || afterReset < 1 || afterReset > 1440)) {
+      return false;
+    }
+
+    return true;
   }
 
   function isScheduleDirty(): boolean {
@@ -124,7 +153,10 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
   }
 
   function checkDirty(): void {
-    saveBtn.classList.toggle("hidden", !isScheduleDirty());
+    errEl.hidden = true;
+    const valid = isFormValid();
+    const dirty = isScheduleDirty();
+    saveBtn.classList.toggle("hidden", !valid || !dirty);
   }
 
   form.querySelectorAll("input").forEach((el) => {
@@ -135,7 +167,6 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
   (document.getElementById("schedule-form") as HTMLFormElement)
     .addEventListener("submit", async (e) => {
       e.preventDefault();
-      const errEl = document.getElementById("form-error") as HTMLParagraphElement;
       errEl.hidden = true;
 
       const n = slotByView(currentView);
@@ -152,10 +183,10 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
       n.wake_interval_minutes = Math.max(1, Number((document.getElementById("wake-interval") as HTMLInputElement).value) || 1);
       n.wake_after_reset_minutes = Math.max(1, Number((document.getElementById("wake-after-reset") as HTMLInputElement).value) || 1);
 
-      // Get times
+      // Get times - validate any entered time
       const wakeTimes = getFormTimes();
       const invalid = wakeTimes.find((v) => !isValidHm(v));
-      if (n.wake_times_enabled && invalid) {
+      if (invalid) {
         errEl.textContent = `Invalid time: ${invalid}. Use HH:MM (24h).`;
         errEl.hidden = false;
         return;

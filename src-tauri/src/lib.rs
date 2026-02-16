@@ -77,6 +77,23 @@ async fn warmup_all(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn warmup_slot(app: tauri::AppHandle, state: tauri::State<'_, SharedState>, slot: usize) -> Result<(), String> {
+    info!("warmup slot {} requested", slot);
+    let config = state.config.read().await.clone();
+    let slot_cfg = config.slots.iter().find(|s| s.slot == slot)
+        .ok_or_else(|| format!("slot {slot} not found"))?;
+
+    if !slot_cfg.enabled || slot_cfg.api_key.trim().is_empty() {
+        return Err("slot is disabled or has no API key".into());
+    }
+
+    let client = api_client::ApiClient::new(Some(app))?;
+    client.warmup_key(slot_cfg).await?;
+    info!("warmup slot {} succeeded", slot);
+    Ok(())
+}
+
+#[tauri::command]
 async fn fetch_slot_stats(app: tauri::AppHandle, state: tauri::State<'_, SharedState>, slot: usize) -> Result<SlotStats, String> {
     let config = state.config.read().await;
     let slot_cfg = config.slots.iter().find(|s| s.slot == slot)
@@ -191,6 +208,7 @@ pub fn run() {
             stop_monitoring,
             get_runtime_status,
             warmup_all,
+            warmup_slot,
             fetch_slot_stats,
             check_for_updates_cmd
         ])
