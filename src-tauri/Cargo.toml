@@ -1,6 +1,6 @@
 [package]
 name = "glm-tray"
-version = "0.0.3-alpha"
+version = "0.0.3"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
