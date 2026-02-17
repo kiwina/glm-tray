@@ -193,7 +193,7 @@ impl SchedulerManager {
             Ok(client) => client,
             Err(err) => {
                 warn!("slot {} client setup failed: {}", idx + 1, err);
-                update_error(&runtime_status, idx, &err).await;
+                let _ = record_error(&runtime_status, idx, &err).await;
                 let _ = tray::refresh_tray(&app, runtime_status.read().await.clone());
                 return;
             }
@@ -202,6 +202,18 @@ impl SchedulerManager {
         loop {
             if *stop_rx.borrow() {
                 break;
+            }
+
+            {
+                let runtime = runtime_status.read().await;
+                if runtime
+                    .slots
+                    .get(idx)
+                    .is_some_and(|slot| slot.auto_disabled)
+                {
+                    info!("slot {} auto-disabled, stopping wake scheduler", idx + 1);
+                    break;
+                }
             }
 
             // Get current config
@@ -216,7 +228,7 @@ impl SchedulerManager {
 
                 if let Err(err) = client.send_wake_request(&cfg).await {
                     warn!("slot {} scheduled wake failed: {}", idx + 1, err);
-                    update_error(&runtime_status, idx, &err).await;
+                    let _ = record_error(&runtime_status, idx, &err).await;
                 } else {
                     info!("slot {} scheduled wake fired", idx + 1);
 
@@ -224,6 +236,7 @@ impl SchedulerManager {
                     let mut sched_mut = schedule.write().await;
                     let old_sched = sched_mut.clone();
                     update_schedule_markers(&cfg, &old_sched, &mut sched_mut);
+                    clear_slot_error(&runtime_status, idx).await;
 
                     // Trigger immediate quota poll to verify wake worked
                     let _ = poll_now_tx.send(true);
@@ -264,7 +277,7 @@ impl SchedulerManager {
             Ok(client) => client,
             Err(err) => {
                 warn!("slot {} client setup failed: {}", idx + 1, err);
-                update_error(&runtime_status, idx, &err).await;
+                let _ = record_error(&runtime_status, idx, &err).await;
                 let _ = tray::refresh_tray(&app, runtime_status.read().await.clone());
                 return;
             }
@@ -274,7 +287,9 @@ impl SchedulerManager {
         let cfg = config_rx.borrow().clone();
         if let Err(err) = client.send_wake_request(&cfg).await {
             warn!("slot {} initial wake failed: {}", idx + 1, err);
-            update_error(&runtime_status, idx, &err).await;
+            let _ = record_error(&runtime_status, idx, &err).await;
+        } else {
+            clear_slot_error(&runtime_status, idx).await;
         }
 
         let mut consecutive_errors: u32 = 0;
@@ -346,21 +361,11 @@ impl SchedulerManager {
                     info!("slot {} quota refreshed (next_reset: {:?})", idx + 1, snapshot.next_reset_epoch_ms);
                 }
                 Err(err) => {
-                    consecutive_errors += 1;
+                    consecutive_errors = record_error(&runtime_status, idx, &err).await;
                     warn!(
                         "slot {} poll failed ({}/{} consecutive): {}",
                         idx + 1, consecutive_errors, MAX_CONSECUTIVE_ERRORS, err
                     );
-
-                    {
-                        let mut runtime = runtime_status.write().await;
-                        if let Some(current) = runtime.slots.get_mut(idx) {
-                            current.slot = idx + 1;
-                            current.enabled = true;
-                            current.last_error = Some(err.clone());
-                            current.consecutive_errors = consecutive_errors;
-                        }
-                    }
 
                     if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
                         error!(
@@ -509,11 +514,31 @@ fn update_schedule_markers(
 }
 
 async fn update_error(runtime_status: &Arc<RwLock<RuntimeStatus>>, idx: usize, message: &str) {
+async fn record_error(
+    runtime_status: &Arc<RwLock<RuntimeStatus>>,
+    idx: usize,
+    message: &str,
+) -> u32 {
     let mut runtime = runtime_status.write().await;
     if let Some(current) = runtime.slots.get_mut(idx) {
         current.slot = idx + 1;
         current.enabled = true;
         current.last_error = Some(message.to_string());
+        current.consecutive_errors = current.consecutive_errors.saturating_add(1);
+        if current.consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+            current.auto_disabled = true;
+        }
+        return current.consecutive_errors;
+    }
+
+    0
+}
+
+async fn clear_slot_error(runtime_status: &Arc<RwLock<RuntimeStatus>>, idx: usize) {
+    let mut runtime = runtime_status.write().await;
+    if let Some(current) = runtime.slots.get_mut(idx) {
+        current.last_error = None;
+        current.consecutive_errors = 0;
     }
 }
 
