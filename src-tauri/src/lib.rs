@@ -104,6 +104,18 @@ async fn warmup_slot(app: tauri::AppHandle, state: tauri::State<'_, SharedState>
 }
 
 #[tauri::command]
+async fn log_ui_action(
+    app: tauri::AppHandle,
+    action: String,
+    slot: Option<usize>,
+    details: Option<serde_json::Value>,
+) -> Result<(), String> {
+    let slot_num = slot.unwrap_or(0);
+    let entry = file_logger::event_entry(slot_num, &format!("ui.{action}"), details);
+    file_logger::append(&app, entry).await
+}
+
+#[tauri::command]
 async fn fetch_slot_stats(app: tauri::AppHandle, state: tauri::State<'_, SharedState>, slot: usize) -> Result<SlotStats, String> {
     let config = state.config.read().await;
     let slot_cfg = config.slots.iter().find(|s| s.slot == slot)
@@ -203,12 +215,13 @@ async fn is_slot_quota_full_realtime(
     };
 
     if let Some(next_reset_ms) = cached_reset {
-        // Trust a still-active cached timer; recheck when expired/missing.
+        // Timer is still running → window IS active → skip warmup
         if next_reset_ms > now_ms {
-            return false;
+            return true;
         }
     }
 
+    // Cache expired or missing — fetch fresh quota to decide
     let slot_idx = slot_cfg.slot.saturating_sub(1);
     match client.fetch_quota(slot_cfg, "warmup-precheck").await {
         Ok(snapshot) => {
@@ -220,8 +233,10 @@ async fn is_slot_quota_full_realtime(
             }
 
             match snapshot.next_reset_epoch_ms {
-                Some(next_reset_ms) => next_reset_ms <= now_ms,
-                None => true,
+                // Timer still active → window IS active → skip warmup
+                Some(next_reset_ms) if next_reset_ms > now_ms => true,
+                // Timer expired or no timer → cold → allow warmup
+                _ => false,
             }
         }
         Err(err) => {
@@ -230,6 +245,7 @@ async fn is_slot_quota_full_realtime(
                 slot_cfg.slot,
                 err
             );
+            // On error, allow warmup attempt (prefer to try)
             false
         }
     }
@@ -309,7 +325,8 @@ pub fn run() {
             warmup_all,
             warmup_slot,
             fetch_slot_stats,
-            check_for_updates_cmd
+            check_for_updates_cmd,
+            log_ui_action
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

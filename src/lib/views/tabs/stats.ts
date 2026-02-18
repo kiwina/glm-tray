@@ -1,6 +1,6 @@
 import { currentView, latestRuntime, cachedStats, statsLoading, deleteCachedStats } from "../../state";
 import { formatTokens, radialGauge, setHeaderActions, warmupButtonHtml, setupWarmupButton } from "../../helpers";
-import { loadStats } from "../../api";
+import { loadStats, logUiAction } from "../../api";
 
 export function renderStatsTab(tc: HTMLDivElement): void {
   const slotNum = Number(currentView);
@@ -24,6 +24,7 @@ export function renderStatsTab(tc: HTMLDivElement): void {
   setTimeout(() => {
     setupWarmupButton();
     document.querySelector(".refresh-header-btn")?.addEventListener("click", () => {
+      logUiAction("stats-refresh", slotNum);
       deleteCachedStats(slotNum);
       renderStatsTab(tc);
     });
@@ -91,7 +92,32 @@ export function renderStatsTab(tc: HTMLDivElement): void {
   }
   const limitsHtml = `<div class="flex gap-2">${limitsCards.join("")}</div>`;
 
-  /* 24h and 5h usage */
+  /* 5h usage — from runtime (polled automatically) */
+  const calls5h = rtSlot?.total_model_calls_5h ?? 0;
+  const tokens5h = rtSlot?.total_tokens_5h ?? 0;
+  const lastUpdated = rtSlot?.quota_last_updated;
+  const updatedLabel = lastUpdated
+    ? `Polled ${new Date(lastUpdated).toLocaleTimeString()}`
+    : "Not yet polled";
+
+  const usage5hHtml = `
+    <div class="card bg-base-100 card-border border-base-300 w-full">
+      <div class="stats bg-base-100 w-full overflow-hidden">
+        <div class="stat py-3 px-4 flex flex-col items-center justify-center">
+          <div class="stat-title text-[10px] text-center">Model Calls</div>
+          <div class="stat-value text-lg text-center">${calls5h.toLocaleString()}</div>
+          <div class="stat-desc opacity-40 text-center">current window</div>
+        </div>
+        <div class="stat py-3 px-4 flex flex-col items-center justify-center">
+          <div class="stat-title text-[10px] text-center">Tokens</div>
+          <div class="stat-value text-lg text-center">${formatTokens(tokens5h)}</div>
+          <div class="stat-desc opacity-40 text-center">current window</div>
+        </div>
+      </div>
+      <div class="text-[9px] opacity-30 text-center pb-1.5">${updatedLabel}</div>
+    </div>`;
+
+  /* 24h usage — from cached stats (manual refresh only) */
   const usage24hHtml = `
     <div class="card bg-base-100 card-border border-base-300 w-full">
       <div class="stats bg-base-100 w-full overflow-hidden">
@@ -106,21 +132,7 @@ export function renderStatsTab(tc: HTMLDivElement): void {
           <div class="stat-desc opacity-40 text-center">24h window</div>
         </div>
       </div>
-    </div>`;
-  const usage5hHtml = `
-    <div class="card bg-base-100 card-border border-base-300 w-full">
-      <div class="stats bg-base-100 w-full overflow-hidden">
-        <div class="stat py-3 px-4 flex flex-col items-center justify-center">
-          <div class="stat-title text-[10px] text-center">Model Calls</div>
-          <div class="stat-value text-lg text-center">${stats.total_model_calls_5h.toLocaleString()}</div>
-          <div class="stat-desc opacity-40 text-center">current window</div>
-        </div>
-        <div class="stat py-3 px-4 flex flex-col items-center justify-center">
-          <div class="stat-title text-[10px] text-center">Tokens</div>
-          <div class="stat-value text-lg text-center">${formatTokens(stats.total_tokens_5h)}</div>
-          <div class="stat-desc opacity-40 text-center">current window</div>
-        </div>
-      </div>
+      <div class="text-[9px] opacity-30 text-center pb-1.5">Manual refresh</div>
     </div>`;
   tc.innerHTML = `
     ${heroHtml}

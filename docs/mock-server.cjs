@@ -6,7 +6,7 @@
  * Usage: node mock-server.cjs [options]
  * Options:
  *   --port=PORT       Server port (default: 3456)
- *   --expiry=MINUTES  Quota expiry time after wake in minutes (default: 2 for testing)
+ *   --expiry=MINUTES  Quota expiry time after wake in minutes (default: 10)
  *
  * Environment variables:
  *   MOCK_PORT       Server port
@@ -20,7 +20,7 @@ const url = require('url');
 function parseArgs() {
   const args = {
     port: parseInt(process.env.MOCK_PORT || '3456', 10),
-    expiryMinutes: parseFloat(process.env.MOCK_EXPIRY || '2'),  // Default 2 minutes after wake
+    expiryMinutes: parseFloat(process.env.MOCK_EXPIRY || '10'),  // Default 10 minutes after wake
   };
 
   for (const arg of process.argv.slice(2)) {
@@ -38,14 +38,32 @@ function parseArgs() {
 
 const config = parseArgs();
 
-// Simulated state
-let quotaPercentage = Math.floor(Math.random() * 30) + 10;
+// ─── Stable simulated state ───────────────────────────────────────────────────
+// Data is generated ONCE at wake time and returned consistently on every request.
+// This matches real API behavior where data only changes on actual usage.
+
 let requestCount = 0;
 
-// Wake state - tracks when quota was last woken
-// null = not woken yet (cold), timestamp = woken at this time
+// Wake state
 let wakeTimeEpoch = null;
 let wakeExpiryEpoch = null;
+
+// Stable quota data (regenerated only on wake)
+let quotaPercentage = 0;
+let timeLimitUsage = 0;
+let timeLimitDetails = [];
+
+// Stable model-usage data (regenerated only on wake)
+let modelCalls5h = 0;
+let tokens5h = 0;
+let modelCalls24h = 0;
+let tokens24h = 0;
+
+// Stable tool-usage data (regenerated only on wake)
+let toolNetworkSearch = 0;
+let toolWebRead = 0;
+let toolZread = 0;
+let toolSearchMcp = 0;
 
 function formatHMS(seconds) {
   const h = Math.floor(seconds / 3600);
@@ -54,43 +72,56 @@ function formatHMS(seconds) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// Check if quota is currently "warm" (has been woken and not expired)
 function isQuotaWarm() {
-  if (wakeExpiryEpoch === null) {
-    return false;
-  }
+  if (wakeExpiryEpoch === null) return false;
   return Date.now() < wakeExpiryEpoch;
 }
 
-// Get remaining seconds until quota expires (only valid if warm)
 function getRemainingSeconds() {
-  if (wakeExpiryEpoch === null) {
-    return 0;
-  }
+  if (wakeExpiryEpoch === null) return 0;
   return Math.max(0, Math.floor((wakeExpiryEpoch - Date.now()) / 1000));
 }
 
-// Wake the quota - start the timer
+// Generate stable random data for the current wake cycle
+function generateStableData() {
+  quotaPercentage = Math.floor(Math.random() * 20) + 5;
+  timeLimitUsage = Math.floor(Math.random() * 50) + 10;
+  timeLimitDetails = [
+    { modelCode: "search-prime", usage: Math.floor(Math.random() * 10) + 1 },
+    { modelCode: "web-reader", usage: Math.floor(Math.random() * 5) + 1 },
+    { modelCode: "zread", usage: Math.floor(Math.random() * 20) + 2 }
+  ];
+
+  modelCalls5h = Math.floor(Math.random() * 200) + 50;
+  tokens5h = Math.floor(Math.random() * 5000000) + 1000000;
+  modelCalls24h = modelCalls5h + Math.floor(Math.random() * 300) + 100;
+  tokens24h = tokens5h + Math.floor(Math.random() * 10000000) + 3000000;
+
+  toolNetworkSearch = Math.floor(Math.random() * 50) + 10;
+  toolWebRead = Math.floor(Math.random() * 30) + 5;
+  toolZread = Math.floor(Math.random() * 100) + 20;
+  toolSearchMcp = Math.floor(Math.random() * 40) + 8;
+}
+
+// Wake the quota - start the timer and regenerate stable data
 function performWake() {
   wakeTimeEpoch = Date.now();
   wakeExpiryEpoch = wakeTimeEpoch + config.expiryMinutes * 60 * 1000;
-  quotaPercentage = Math.floor(Math.random() * 20) + 5;  // Reset percentage on wake
-  console.log(`[${new Date().toISOString()}] WAKE! Quota timer started, expires in ${config.expiryMinutes} minutes`);
+  generateStableData();
+  console.log(`[${new Date().toISOString()}] WAKE! Timer started, expires in ${config.expiryMinutes} min (${new Date(wakeExpiryEpoch).toLocaleTimeString()})`);
 }
 
-// Quota response - matches real Z.ai API format exactly
+// Quota response - matches real Z.ai API format
 function getQuotaResponse() {
   const warm = isQuotaWarm();
 
-  // TOKENS_LIMIT only has nextResetTime if quota is warm
   const tokensLimit = {
     type: "TOKENS_LIMIT",
     unit: 3,
     number: 5,
-    percentage: quotaPercentage,
+    percentage: warm ? quotaPercentage : 0,
   };
 
-  // Only include nextResetTime if quota is warm
   if (warm) {
     tokensLimit.nextResetTime = wakeExpiryEpoch;
   }
@@ -102,15 +133,11 @@ function getQuotaResponse() {
         unit: 5,
         number: 1,
         usage: 1000,
-        currentValue: Math.floor(quotaPercentage * 3),
-        remaining: 1000 - Math.floor(quotaPercentage * 3),
-        percentage: Math.floor(quotaPercentage * 0.3),
+        currentValue: warm ? timeLimitUsage : 0,
+        remaining: warm ? 1000 - timeLimitUsage : 1000,
+        percentage: warm ? Math.floor(timeLimitUsage / 10) : 0,
         nextResetTime: null,
-        usageDetails: [
-          { modelCode: "search-prime", usage: Math.floor(Math.random() * 10) },
-          { modelCode: "web-reader", usage: Math.floor(Math.random() * 5) },
-          { modelCode: "zread", usage: Math.floor(Math.random() * 20) }
-        ]
+        usageDetails: warm ? timeLimitDetails : []
       },
       tokensLimit
     ],
@@ -141,7 +168,7 @@ const server = http.createServer((req, res) => {
 
   requestCount++;
   const warm = isQuotaWarm();
-  const statusStr = warm ? `WARM (${formatHMS(getRemainingSeconds())} remaining)` : 'COLD (needs wake)';
+  const statusStr = warm ? `WARM (${formatHMS(getRemainingSeconds())} left)` : 'COLD';
   console.log(`[${new Date().toISOString()}] #${requestCount} ${method} ${path} [${statusStr}]`);
 
   // CORS headers
@@ -157,11 +184,7 @@ const server = http.createServer((req, res) => {
 
   // Route handling
   if (path.includes('/quota/limit') || path.includes('/monitor/usage/quota/limit')) {
-    // Simulate percentage increasing over time (rolling) only if warm
-    if (isQuotaWarm()) {
-      quotaPercentage = Math.min(99, quotaPercentage + (Math.random() * 3) + 1);
-    }
-
+    // No random increment — data stays stable until next wake
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       code: 200,
@@ -173,18 +196,14 @@ const server = http.createServer((req, res) => {
   }
 
   if (path.includes('/chat/completions')) {
-    // Wake the quota!
     performWake();
-
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(getChatCompletionResponse()));
     return;
   }
 
   if (path.includes('/wake') || path.includes('/warmup')) {
-    // Alternative wake endpoint
     performWake();
-
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       success: true,
@@ -198,13 +217,24 @@ const server = http.createServer((req, res) => {
   }
 
   if (path.includes('/model-usage')) {
+    // Return stable data — same values until next wake
     res.writeHead(200, { 'Content-Type': 'application/json' });
+
+    // Detect 5h vs 24h from startTime query param (simplified)
+    const query = parsedUrl.query || {};
+    const startTime = query.startTime || '';
+    const is24h = !warm || startTime.length === 0;
+
+    // If cold, return zeros; if warm, return stable data
+    const calls = warm ? (is24h ? modelCalls24h : modelCalls5h) : 0;
+    const tokens = warm ? (is24h ? tokens24h : tokens5h) : 0;
+
     res.end(JSON.stringify({
       code: 200,
       data: {
         totalUsage: {
-          totalModelCallCount: Math.floor(Math.random() * 500) + 100,
-          totalTokensUsage: Math.floor(Math.random() * 15000000) + 5000000
+          totalModelCallCount: calls,
+          totalTokensUsage: tokens
         }
       },
       msg: "Operation successful",
@@ -214,15 +244,16 @@ const server = http.createServer((req, res) => {
   }
 
   if (path.includes('/tool-usage')) {
+    // Return stable data
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       code: 200,
       data: {
         totalUsage: {
-          totalNetworkSearchCount: Math.floor(Math.random() * 50) + 10,
-          totalWebReadMcpCount: Math.floor(Math.random() * 30) + 5,
-          totalZreadMcpCount: Math.floor(Math.random() * 100) + 20,
-          totalSearchMcpCount: Math.floor(Math.random() * 40) + 8
+          totalNetworkSearchCount: warm ? toolNetworkSearch : 0,
+          totalWebReadMcpCount: warm ? toolWebRead : 0,
+          totalZreadMcpCount: warm ? toolZread : 0,
+          totalSearchMcpCount: warm ? toolSearchMcp : 0
         }
       },
       msg: "Operation successful",
@@ -239,7 +270,7 @@ const server = http.createServer((req, res) => {
       message: 'Mock server running',
       quota: {
         state: isQuotaWarm() ? 'warm' : 'cold',
-        percentage: Math.round(quotaPercentage * 10) / 10,
+        percentage: quotaPercentage,
         remainingSeconds: getRemainingSeconds(),
         remainingHMS: isQuotaWarm() ? formatHMS(getRemainingSeconds()) : null,
         expiresAt: wakeExpiryEpoch
@@ -263,15 +294,17 @@ server.listen(config.port, () => {
   console.log(`  Quota expiry after wake: ${config.expiryMinutes} minutes`);
   console.log('');
   console.log('Behavior:');
-  console.log('  - TOKENS_LIMIT has NO nextResetTime initially (quota is COLD)');
-  console.log('  - Call /chat/completions to WAKE the quota');
-  console.log('  - After wake, TOKENS_LIMIT has nextResetTime (quota is WARM)');
-  console.log('  - After expiry, nextResetTime is removed (quota is COLD again)');
+  console.log('  - Quota starts COLD (no nextResetTime)');
+  console.log('  - POST /chat/completions → WAKE (starts timer, generates stable data)');
+  console.log('  - All GET requests return SAME data until next wake or expiry');
+  console.log(`  - After ${config.expiryMinutes}min → COLD again (nextResetTime removed)`);
   console.log('');
   console.log('Endpoints:');
-  console.log('  GET/POST /api/monitor/usage/quota/limit - Quota info');
-  console.log('  POST    /api/coding/paas/v4/chat/completions - Wake (activates quota)');
-  console.log('  GET     /health - Health check with current quota state');
+  console.log('  GET  /api/monitor/usage/quota/limit     - Quota & timer state');
+  console.log('  GET  /api/monitor/usage/model-usage      - Model call/token stats');
+  console.log('  GET  /api/monitor/usage/tool-usage       - Tool usage stats');
+  console.log('  POST /api/coding/paas/v4/chat/completions - Wake');
+  console.log('  GET  /health                             - Health check');
   console.log('');
-  console.log('Quota is currently: COLD (call /chat/completions to wake)');
+  console.log('Quota is currently: COLD');
 });

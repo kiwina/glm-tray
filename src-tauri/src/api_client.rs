@@ -119,18 +119,6 @@ impl ApiClient {
 
         info!("slot {}: sending warmup request to {}", cfg.slot, url);
         let flow_id = self.next_flow_id(cfg, "manual-warmup");
-        self.log(
-            cfg,
-            file_logger::request_entry_with_id(
-                cfg.slot,
-                "manual-warmup",
-                "POST",
-                &url,
-                Some(body.clone()),
-                flow_id.clone(),
-            ),
-        )
-        .await;
         let start = Instant::now();
 
         let response = match self
@@ -218,18 +206,6 @@ impl ApiClient {
 
         info!("slot {}: sending scheduled wake request to {}", cfg.slot, url);
         let flow_id = self.next_flow_id(cfg, "scheduled-wake");
-        self.log(
-            cfg,
-            file_logger::request_entry_with_id(
-                cfg.slot,
-                "scheduled-wake",
-                "POST",
-                &url,
-                Some(body.clone()),
-                flow_id.clone(),
-            ),
-        )
-        .await;
         let start = Instant::now();
 
         let response = match self
@@ -307,18 +283,6 @@ impl ApiClient {
 
         debug!("slot {}: fetching quota from {} (caller: {})", cfg.slot, url, caller);
         let flow_id = self.next_flow_id(cfg, caller);
-        self.log(
-            cfg,
-            file_logger::request_entry_with_id(
-                cfg.slot,
-                caller,
-                "GET",
-                &url,
-                None,
-                flow_id.clone(),
-            ),
-        )
-        .await;
         let start = Instant::now();
 
         let req = self
@@ -498,6 +462,121 @@ impl ApiClient {
         })
     }
 
+    /// Fetch 5h model-usage (calls + tokens).  Called by the quota poller
+    /// each cycle so the dashboard always has fresh data.
+    pub async fn fetch_model_usage_5h(
+        &self,
+        cfg: &KeySlotConfig,
+        next_reset_epoch_ms: Option<i64>,
+    ) -> (u64, u64) {
+        let auth = Self::auth_header(&cfg.api_key);
+        let base_url = debug_url(&cfg.quota_url, Some(self.debug), self.mock_url.as_deref());
+        let base = base_url.trim_end_matches("/quota/limit");
+        let now = Local::now();
+
+        let (start_5h, end_5h) = if let Some(reset_ts) = next_reset_epoch_ms {
+            if reset_ts > 0 {
+                let reset_dt = Local.timestamp_millis_opt(reset_ts).single().unwrap_or(now);
+                let start = (reset_dt - chrono::Duration::hours(5))
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string();
+                let end = reset_dt.format("%Y-%m-%d %H:%M:%S").to_string();
+                (start, end)
+            } else {
+                (
+                    (now - chrono::Duration::hours(5))
+                        .format("%Y-%m-%d %H:%M:%S")
+                        .to_string(),
+                    now.format("%Y-%m-%d %H:%M:%S").to_string(),
+                )
+            }
+        } else {
+            (
+                (now - chrono::Duration::hours(5))
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string(),
+                now.format("%Y-%m-%d %H:%M:%S").to_string(),
+            )
+        };
+
+        let url = format!(
+            "{}/model-usage?startTime={}&endTime={}",
+            base,
+            urlencoding::encode(&start_5h),
+            urlencoding::encode(&end_5h)
+        );
+
+        match self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, auth)
+            .header(ACCEPT_LANGUAGE, "en-US")
+            .header(CONTENT_TYPE, "application/json")
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let status = resp.status().as_u16();
+                let text = resp.text().await.unwrap_or_default();
+                let resp_json: Option<serde_json::Value> =
+                    serde_json::from_str(&text).ok();
+                self.log(
+                    cfg,
+                    file_logger::response_entry(
+                        cfg.slot,
+                        "poll-model-usage-5h",
+                        "GET",
+                        &url,
+                        status,
+                        resp_json,
+                    ),
+                )
+                .await;
+                let parsed: Result<ModelUsageApiResponse, _> =
+                    serde_json::from_str(&text);
+                match parsed {
+                    Ok(r) if r.code == 200 => {
+                        let t = r.data.and_then(|d| d.total_usage);
+                        (
+                            t.as_ref().map_or(0, |u| u.total_model_call_count),
+                            t.as_ref().map_or(0, |u| u.total_tokens_usage),
+                        )
+                    }
+                    _ => (0, 0),
+                }
+            }
+            Ok(resp) => {
+                let msg = format!("poll-model-usage-5h HTTP error: {}", resp.status());
+                self.log(
+                    cfg,
+                    file_logger::error_entry(
+                        cfg.slot,
+                        "poll-model-usage-5h",
+                        "GET",
+                        &url,
+                        &msg,
+                    ),
+                )
+                .await;
+                (0, 0)
+            }
+            Err(e) => {
+                self.log(
+                    cfg,
+                    file_logger::error_entry(
+                        cfg.slot,
+                        "poll-model-usage-5h",
+                        "GET",
+                        &url,
+                        &e.to_string(),
+                    ),
+                )
+                .await;
+                (0, 0)
+            }
+        }
+    }
+
     pub async fn fetch_slot_stats(&self, cfg: &KeySlotConfig) -> Result<SlotStats, String> {
         let auth = Self::auth_header(&cfg.api_key);
 
@@ -505,7 +584,7 @@ impl ApiClient {
         let quota_url = debug_url(&cfg.quota_url, Some(self.debug), self.mock_url.as_deref());
 
         // 1. Fetch full quota/limit
-        self.log(cfg, file_logger::request_entry(cfg.slot, "manual-stats-request", "GET", &quota_url, None)).await;
+
         let quota_resp = self
             .client
             .get(&quota_url)
@@ -600,7 +679,7 @@ impl ApiClient {
         let (total_model_calls_24h, total_tokens_24h) = {
             let url = format!("{}/model-usage?startTime={}&endTime={}", base,
                 urlencoding::encode(&start_24h), urlencoding::encode(&end));
-            self.log(cfg, file_logger::request_entry(cfg.slot, "manual-model-usage-24h", "GET", &url, None)).await;
+
             match self.client.get(&url)
                 .header(AUTHORIZATION, auth.clone())
                 .header(ACCEPT_LANGUAGE, "en-US")
@@ -638,7 +717,7 @@ impl ApiClient {
         let (total_model_calls_5h, total_tokens_5h) = {
             let url = format!("{}/model-usage?startTime={}&endTime={}", base,
                 urlencoding::encode(&start_5h), urlencoding::encode(&end_5h));
-            self.log(cfg, file_logger::request_entry(cfg.slot, "manual-model-usage-5h", "GET", &url, None)).await;
+
             match self.client.get(&url)
                 .header(AUTHORIZATION, auth.clone())
                 .header(ACCEPT_LANGUAGE, "en-US")
@@ -676,7 +755,7 @@ impl ApiClient {
         let (net_search, web_read, zread, search_mcp) = {
             let url = format!("{}/tool-usage?startTime={}&endTime={}", base,
                 urlencoding::encode(&start_24h), urlencoding::encode(&end));
-            self.log(cfg, file_logger::request_entry(cfg.slot, "manual-tool-usage", "GET", &url, None)).await;
+
             match self.client.get(&url)
                 .header(AUTHORIZATION, auth.clone())
                 .header(ACCEPT_LANGUAGE, "en-US")

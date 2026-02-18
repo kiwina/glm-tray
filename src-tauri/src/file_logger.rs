@@ -168,41 +168,6 @@ fn request_entry_internal(
     }
 }
 
-/// Convenience: build a LogEntry for a request.
-pub fn request_entry(
-    slot: usize,
-    action: &str,
-    method: &str,
-    url: &str,
-    body: Option<serde_json::Value>,
-) -> LogEntry {
-    request_entry_internal(slot, action, method, url, body, None, None, None, None, None, None, Some("request".to_string()))
-}
-
-/// Convenience: build a LogEntry for a request with a flow id.
-pub fn request_entry_with_id(
-    slot: usize,
-    action: &str,
-    method: &str,
-    url: &str,
-    body: Option<serde_json::Value>,
-    flow_id: String,
-) -> LogEntry {
-    request_entry_internal(
-        slot,
-        action,
-        method,
-        url,
-        body,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some(flow_id),
-        Some("request".to_string()),
-    )
-}
 
 /// Convenience: build a LogEntry for a response.
 pub fn response_entry(

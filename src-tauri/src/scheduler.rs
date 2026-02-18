@@ -863,8 +863,8 @@ impl SchedulerManager {
             }
 
             // Fetch quota
-            let mut retry_quota_now = false;
-            let mut wake_window_active = false;
+            let retry_quota_now;
+            let wake_window_active;
             match client.fetch_quota(&cfg, "quota-poll").await {
                 Ok(snapshot) => {
                     let was_wake_pending = {
@@ -1016,6 +1016,12 @@ impl SchedulerManager {
                         sched.next_reset_epoch_ms = snapshot.next_reset_epoch_ms;
                     }
 
+                    // Fetch 5h model-usage alongside quota
+                    let (model_calls_5h, tokens_5h) = client
+                        .fetch_model_usage_5h(&cfg, snapshot.next_reset_epoch_ms)
+                        .await;
+                    let now_iso = chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
+
                         // Update runtime status for UI
                     clear_quota_error(&runtime_status, idx).await;
                     {
@@ -1029,6 +1035,9 @@ impl SchedulerManager {
                             current.next_reset_hms = snapshot.next_reset_hms.clone();
                             current.last_updated_epoch_ms = snapshot.next_reset_epoch_ms;
                             current.auto_disabled = false;
+                            current.total_model_calls_5h = model_calls_5h;
+                            current.total_tokens_5h = tokens_5h;
+                            current.quota_last_updated = Some(now_iso.clone());
                         }
                     }
 
@@ -1038,7 +1047,10 @@ impl SchedulerManager {
                         "percentage": snapshot.percentage,
                         "timer_active": snapshot.timer_active,
                         "next_reset_hms": snapshot.next_reset_hms,
-                        "next_reset_epoch_ms": snapshot.next_reset_epoch_ms
+                        "next_reset_epoch_ms": snapshot.next_reset_epoch_ms,
+                        "total_model_calls_5h": model_calls_5h,
+                        "total_tokens_5h": tokens_5h,
+                        "quota_last_updated": now_iso
                     }));
 
                     info!("slot {} quota refreshed (next_reset: {:?})", idx + 1, snapshot.next_reset_epoch_ms);
@@ -1510,20 +1522,7 @@ pub async fn reset_runtime(runtime_status: &Arc<RwLock<RuntimeStatus>>) {
     for idx in 0..runtime.slots.len() {
         runtime.slots[idx] = SlotRuntimeStatus {
             slot: idx + 1,
-            name: String::new(),
-            enabled: false,
-            timer_active: false,
-            percentage: None,
-            next_reset_hms: None,
-            last_error: None,
-            last_updated_epoch_ms: None,
-            wake_consecutive_errors: 0,
-            quota_consecutive_errors: 0,
-            consecutive_errors: 0,
-            wake_pending: false,
-            wake_reset_epoch_ms: None,
-            wake_auto_disabled: false,
-            auto_disabled: false,
+            ..Default::default()
         };
     }
 }

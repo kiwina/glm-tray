@@ -4,6 +4,7 @@ import { slotByView, clearHeaderActions } from "../helpers";
 import { renderStatsTab } from "./tabs/stats";
 import { renderScheduleTab } from "./tabs/schedule";
 import { renderSettingsTab } from "./tabs/settings";
+import { logUiAction } from "../api";
 
 export function renderKeyDetailShell(): void {
   const s = slotByView(currentView);
@@ -56,9 +57,13 @@ export function renderKeyDetailShell(): void {
 
   document.querySelectorAll<HTMLButtonElement>("#key-dock button:not([disabled])").forEach((btn) => {
     btn.addEventListener("click", () => {
-      setCurrentKeyTab(btn.dataset.tab as KeyTab);
-      resetScheduleSavedSnapshot();
-      renderKeyDetailShell();
+      const tab = btn.dataset.tab as KeyTab;
+      if (tab !== currentKeyTab) {
+        logUiAction("tab-switch", s.slot, { tab });
+        setCurrentKeyTab(tab);
+        resetScheduleSavedSnapshot();
+        renderKeyDetailShell();
+      }
     });
   });
 

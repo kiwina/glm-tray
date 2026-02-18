@@ -1,6 +1,6 @@
 import type { View } from "../types";
 import { MAX_KEYS } from "../constants";
-import { configState, latestRuntime, appVersion, cachedStats } from "../state";
+import { configState, latestRuntime, appVersion } from "../state";
 import { esc, defaultConfig, dotClass, pctBarClass, formatTokens } from "../helpers";
 import { render } from "./render";
 
@@ -57,7 +57,7 @@ export function renderDashboard(): void {
       const quotaErrBadge =
         rtSlot.quota_consecutive_errors > 0
           ? `<span class="badge badge-error badge-xs">quota \u00D7${rtSlot.quota_consecutive_errors}</span>`
-        : "";
+          : "";
       const wakeErrBadge =
         rtSlot.wake_consecutive_errors > 0
           ? `<span class="badge badge-warning badge-xs">wake \u00D7${rtSlot.wake_consecutive_errors}</span>`
@@ -78,12 +78,15 @@ export function renderDashboard(): void {
         <div class="flex items-center gap-2 ml-auto shrink-0">${rightSide}</div>
       </div>`;
 
-    // Demo stats boxes below each key
-    const stats = cachedStats[slot.slot];
+    // Stats boxes below each key — read from runtime (polled data)
     const pct = rtSlot?.percentage ?? 0;
     const reset = rtSlot?.next_reset_hms ?? "--:--:--";
-    const calls = stats?.total_model_calls_5h ?? 0;
-    const tokens = stats?.total_tokens_5h ?? 0;
+    const calls = rtSlot?.total_model_calls_5h ?? 0;
+    const tokens = rtSlot?.total_tokens_5h ?? 0;
+    const lastUpdated = rtSlot?.quota_last_updated;
+    const updatedLabel = lastUpdated
+      ? `Updated ${new Date(lastUpdated).toLocaleTimeString()}`
+      : "Not yet polled";
 
     html += `
       <div class="border-t-base-content/5 border-t border-dashed px-1 pb-2">
@@ -101,7 +104,7 @@ export function renderDashboard(): void {
             <div class="stat-value text-base text-center">${formatTokens(tokens)}</div>
           </div>
         </div>
-        <div class="text-[9px] opacity-40 text-center mt-1">Resets in ${reset}</div>
+        <div class="text-[9px] opacity-40 text-center mt-1">Resets in ${reset} · ${updatedLabel}</div>
       </div>`;
   }
 

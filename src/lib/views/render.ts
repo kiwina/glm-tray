@@ -5,10 +5,12 @@ import { updateSidebar } from "../sidebar";
 import { renderDashboard } from "./dashboard";
 import { renderKeyDetailShell } from "./key-detail";
 import { renderGlobalSettings } from "./global-settings";
+import { logUiAction } from "../api";
 
 export function render(view?: View): void {
   if (view !== undefined) {
     setCurrentView(view);
+    logUiAction("navigate", undefined, { view });
   }
   clearHeaderActions();
   updateSidebar();

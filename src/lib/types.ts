@@ -52,6 +52,9 @@ export interface SlotRuntimeStatus {
   wake_reset_epoch_ms: number | null;
   wake_auto_disabled: boolean;
   auto_disabled: boolean;
+  total_model_calls_5h: number;
+  total_tokens_5h: number;
+  quota_last_updated: string | null;
 }
 
 export interface RuntimeStatus {
@@ -100,4 +103,7 @@ export interface QuotaUpdateEvent {
   timer_active: boolean;
   next_reset_hms: string | null;
   next_reset_epoch_ms: number | null;
+  total_model_calls_5h: number;
+  total_tokens_5h: number;
+  quota_last_updated: string | null;
 }

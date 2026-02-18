@@ -141,6 +141,15 @@ pub struct SlotRuntimeStatus {
     pub wake_reset_epoch_ms: Option<i64>,
     pub wake_auto_disabled: bool,
     pub auto_disabled: bool,
+    /// 5h model call count (updated by quota poller)
+    #[serde(default)]
+    pub total_model_calls_5h: u64,
+    /// 5h token usage (updated by quota poller)
+    #[serde(default)]
+    pub total_tokens_5h: u64,
+    /// ISO timestamp of last quota poller update
+    #[serde(default)]
+    pub quota_last_updated: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

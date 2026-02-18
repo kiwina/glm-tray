@@ -64,6 +64,9 @@ export function defaultRuntimeStatus(): RuntimeStatus {
       wake_reset_epoch_ms: null,
       wake_auto_disabled: false,
       auto_disabled: false,
+      total_model_calls_5h: 0,
+      total_tokens_5h: 0,
+      quota_last_updated: null,
     })),
   };
 }
@@ -219,6 +222,8 @@ export function setupWarmupButton(): void {
   if (!btn) return;
   btn.addEventListener("click", async () => {
     const slot = Number(btn.dataset.slot);
+    const { logUiAction } = await import("./api");
+    logUiAction("warmup-slot", slot);
     btn.classList.add("warming-up");
     btn.disabled = true;
     try {

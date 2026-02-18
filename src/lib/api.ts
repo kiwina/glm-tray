@@ -19,6 +19,12 @@ import { updateSidebar } from "./sidebar";
 import { renderDashboard } from "./views/dashboard";
 import { renderStatsTab } from "./views/tabs/stats";
 
+/** Log a UI user action to the backend log file (fire-and-forget). */
+export function logUiAction(action: string, slot?: number, details?: Record<string, unknown>): void {
+  if (!isTauriRuntime) return;
+  void backendInvoke("log_ui_action", { action, slot: slot ?? null, details: details ?? null }).catch(() => { });
+}
+
 export function hasSlotWithKey(): boolean {
   if (!configState) {
     return false;
@@ -78,6 +84,9 @@ export async function backendInvoke<T>(
           wake_reset_epoch_ms: null,
           wake_auto_disabled: false,
           auto_disabled: false,
+          total_model_calls_5h: 0,
+          total_tokens_5h: 0,
+          quota_last_updated: null,
         })),
       });
       return undefined as T;

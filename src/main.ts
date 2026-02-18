@@ -5,12 +5,13 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import type { AppConfig, QuotaUpdateEvent } from "./lib/types";
 import { isTauriRuntime } from "./lib/constants";
-import { setConfigState, setAppVersion, currentView, currentKeyTab, deleteCachedStats, latestRuntime } from "./lib/state";
+import { setConfigState, setAppVersion, currentView, currentKeyTab, cachedStats, latestRuntime } from "./lib/state";
 import { applyTheme } from "./lib/helpers";
-import { backendInvoke, refreshRuntimeStatus, hasEnabledSlotWithKey, syncMonitorButtons } from "./lib/api";
+import { backendInvoke, refreshRuntimeStatus, hasEnabledSlotWithKey, syncMonitorButtons, logUiAction } from "./lib/api";
 import { createSidebar } from "./lib/sidebar";
 import { render } from "./lib/views/render";
 import { renderStatsTab } from "./lib/views/tabs/stats";
+import { renderDashboard } from "./lib/views/dashboard";
 import { checkAndShowUpdate } from "./lib/update";
 
 function syncWarmupButton(): void {
@@ -56,6 +57,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
     try {
       const isMonitoring = latestRuntime?.monitoring ?? false;
+      logUiAction(isMonitoring ? "monitor-stop" : "monitor-start");
       await backendInvoke(isMonitoring ? "stop_monitoring" : "start_monitoring");
       await refreshRuntimeStatus();
       syncMonitorButtons();
@@ -75,6 +77,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
     warmupBtn.classList.add("warming-up");
     warmupBtn.disabled = true;
+    logUiAction("warmup-all");
     try {
       await backendInvoke("warmup_all");
     } finally {
@@ -106,10 +109,39 @@ window.addEventListener("DOMContentLoaded", async () => {
       "quota-updated",
       (event) => {
         const slot = event.payload.slot;
-        // Invalidate cached stats for this slot
-        deleteCachedStats(slot);
-        // If user is viewing this slot's stats tab, trigger a refresh
-        if (currentView === String(slot) && currentKeyTab === "stats") {
+
+        // Update runtime slot data immediately (dashboard reads from here)
+        if (latestRuntime) {
+          const rtSlot = latestRuntime.slots.find((s) => s.slot === slot);
+          if (rtSlot) {
+            rtSlot.percentage = event.payload.percentage;
+            rtSlot.timer_active = event.payload.timer_active;
+            rtSlot.next_reset_hms = event.payload.next_reset_hms ?? rtSlot.next_reset_hms;
+            rtSlot.last_updated_epoch_ms = event.payload.next_reset_epoch_ms ?? rtSlot.last_updated_epoch_ms;
+            rtSlot.total_model_calls_5h = event.payload.total_model_calls_5h;
+            rtSlot.total_tokens_5h = event.payload.total_tokens_5h;
+            rtSlot.quota_last_updated = event.payload.quota_last_updated;
+          }
+        }
+
+        // Update cached stats if they exist (stats tab reads from here)
+        const existing = cachedStats[slot];
+        if (existing) {
+          for (const lim of existing.limits) {
+            if (lim.type_name === "TOKENS_LIMIT") {
+              lim.percentage = event.payload.percentage;
+              lim.next_reset_hms = event.payload.next_reset_hms ?? lim.next_reset_hms;
+              lim.next_reset_time = event.payload.next_reset_epoch_ms ?? lim.next_reset_time;
+            }
+          }
+          existing.total_model_calls_5h = event.payload.total_model_calls_5h;
+          existing.total_tokens_5h = event.payload.total_tokens_5h;
+        }
+
+        // Re-render the appropriate view
+        if (currentView === "dashboard") {
+          renderDashboard();
+        } else if (currentView === String(slot) && currentKeyTab === "stats") {
           const tc = document.getElementById("tab-content");
           if (tc) renderStatsTab(tc as HTMLDivElement);
         }
