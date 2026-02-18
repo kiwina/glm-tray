@@ -70,7 +70,7 @@ export function renderStatsTab(tc: HTMLDivElement): void {
   /* limits */
   let limitsCards: string[] = [];
   for (const lim of stats.limits) {
-    const label = lim.type_name === "TOKENS_LIMIT" ? "Tokens" : "Requests";
+    const label = lim.type_name === "TOKENS_LIMIT" ? "Quota" : "MCP Requests";
     const resetStr = lim.next_reset_hms ?? "\u2014";
     const resetLabel = (lim.unit ?? 3) <= 3 ? "Reset" : "Resets";
     const usedStr = lim.current_value != null ? formatTokens(lim.current_value) : "\u2014";
@@ -91,8 +91,8 @@ export function renderStatsTab(tc: HTMLDivElement): void {
   }
   const limitsHtml = `<div class="flex gap-2">${limitsCards.join("")}</div>`;
 
-  /* 24h usage */
-  const usageHtml = `
+  /* 24h and 5h usage */
+  const usage24hHtml = `
     <div class="card bg-base-100 card-border border-base-300 w-full">
       <div class="stats bg-base-100 w-full overflow-hidden">
         <div class="stat py-3 px-4 flex flex-col items-center justify-center">
@@ -107,9 +107,24 @@ export function renderStatsTab(tc: HTMLDivElement): void {
         </div>
       </div>
     </div>`;
-
+  const usage5hHtml = `
+    <div class="card bg-base-100 card-border border-base-300 w-full">
+      <div class="stats bg-base-100 w-full overflow-hidden">
+        <div class="stat py-3 px-4 flex flex-col items-center justify-center">
+          <div class="stat-title text-[10px] text-center">Model Calls</div>
+          <div class="stat-value text-lg text-center">${stats.total_model_calls_5h.toLocaleString()}</div>
+          <div class="stat-desc opacity-40 text-center">current window</div>
+        </div>
+        <div class="stat py-3 px-4 flex flex-col items-center justify-center">
+          <div class="stat-title text-[10px] text-center">Tokens</div>
+          <div class="stat-value text-lg text-center">${formatTokens(stats.total_tokens_5h)}</div>
+          <div class="stat-desc opacity-40 text-center">current window</div>
+        </div>
+      </div>
+    </div>`;
   tc.innerHTML = `
     ${heroHtml}
-    <div class="mt-0">${usageHtml}</div>
+    <div class="mt-0">${usage5hHtml}</div>
+    <div class="mt-2">${usage24hHtml}</div>  
     <div class="mt-2">${limitsHtml}</div>`;
 }

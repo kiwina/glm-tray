@@ -103,6 +103,8 @@ export async function backendInvoke<T>(
         ],
         total_model_calls_24h: slotCfg?.enabled ? Math.floor(Math.random() * 2000) : 0,
         total_tokens_24h: slotCfg?.enabled ? Math.floor(Math.random() * 100000000) : 0,
+        total_model_calls_5h: slotCfg?.enabled ? Math.floor(Math.random() * 500) : 0,
+        total_tokens_5h: slotCfg?.enabled ? Math.floor(Math.random() * 25000000) : 0,
         total_network_search_24h: 0,
         total_web_read_24h: 0,
         total_zread_24h: slotCfg?.enabled ? Math.floor(Math.random() * 30) : 0,

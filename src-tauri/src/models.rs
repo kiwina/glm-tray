@@ -309,6 +309,8 @@ pub struct SlotStats {
     pub limits: Vec<LimitInfo>,
     pub total_model_calls_24h: u64,
     pub total_tokens_24h: u64,
+    pub total_model_calls_5h: u64,
+    pub total_tokens_5h: u64,
     pub total_network_search_24h: u64,
     pub total_web_read_24h: u64,
     pub total_zread_24h: u64,

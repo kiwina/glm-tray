@@ -74,6 +74,8 @@ export interface SlotStats {
   limits: LimitInfo[];
   total_model_calls_24h: number;
   total_tokens_24h: number;
+  total_model_calls_5h: number;
+  total_tokens_5h: number;
   total_network_search_24h: number;
   total_web_read_24h: number;
   total_zread_24h: number;

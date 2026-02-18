@@ -510,17 +510,36 @@ impl ApiClient {
             })
             .collect();
 
-        // 2. Derive base URL for model-usage / tool-usage
+        // 2. Derive base URL for model-usage / tool-usage and calculate time ranges
         let base = cfg.quota_url.trim_end_matches("/quota/limit");
         let now = Local::now();
-        let start = (now - chrono::Duration::hours(24)).format("%Y-%m-%d %H:%M:%S").to_string();
+        let start_24h = (now - chrono::Duration::hours(24)).format("%Y-%m-%d %H:%M:%S").to_string();
         let end = now.format("%Y-%m-%d %H:%M:%S").to_string();
 
-        // 3. Fetch model-usage (best effort)
-        let (total_model_calls, total_tokens) = {
+        // For 5h window, use the TOKENS_LIMIT reset time if available
+        // The 5h window is the 5 hours leading up to the next reset
+        let tokens_limit = quota_data.limits.iter().find(|l| l.r#type == "TOKENS_LIMIT");
+        let reset_time = tokens_limit.and_then(|l| l.next_reset_time);
+        let (start_5h, end_5h) = if let Some(reset_ts) = reset_time {
+            if reset_ts > 0 {
+                let reset_dt = Local.timestamp_millis_opt(reset_ts).single().unwrap_or(now);
+                let start = (reset_dt - chrono::Duration::hours(5)).format("%Y-%m-%d %H:%M:%S").to_string();
+                let end = reset_dt.format("%Y-%m-%d %H:%M:%S").to_string();
+                (start, end)
+            } else {
+                ((now - chrono::Duration::hours(5)).format("%Y-%m-%d %H:%M:%S").to_string(),
+                 now.format("%Y-%m-%d %H:%M:%S").to_string())
+            }
+        } else {
+            ((now - chrono::Duration::hours(5)).format("%Y-%m-%d %H:%M:%S").to_string(),
+             now.format("%Y-%m-%d %H:%M:%S").to_string())
+        };
+
+        // 3. Fetch model-usage for 24h window (best effort)
+        let (total_model_calls_24h, total_tokens_24h) = {
             let url = format!("{}/model-usage?startTime={}&endTime={}", base,
-                urlencoding::encode(&start), urlencoding::encode(&end));
-            self.log(cfg, file_logger::request_entry(cfg.slot, "manual-model-usage", "GET", &url, None)).await;
+                urlencoding::encode(&start_24h), urlencoding::encode(&end));
+            self.log(cfg, file_logger::request_entry(cfg.slot, "manual-model-usage-24h", "GET", &url, None)).await;
             match self.client.get(&url)
                 .header(AUTHORIZATION, auth.clone())
                 .header(ACCEPT_LANGUAGE, "en-US")
@@ -531,7 +550,7 @@ impl ApiClient {
                     let status = resp.status().as_u16();
                     let text = resp.text().await.unwrap_or_default();
                     let resp_json: Option<serde_json::Value> = serde_json::from_str(&text).ok();
-                    self.log(cfg, file_logger::response_entry(cfg.slot, "manual-model-usage", "GET", &url, status, resp_json)).await;
+                    self.log(cfg, file_logger::response_entry(cfg.slot, "manual-model-usage-24h", "GET", &url, status, resp_json)).await;
                     let parsed: Result<ModelUsageApiResponse, _> = serde_json::from_str(&text);
                     match parsed {
                         Ok(r) if r.code == 200 => {
@@ -543,12 +562,50 @@ impl ApiClient {
                     }
                 }
                 Ok(resp) => {
-                    let msg = format!("model-usage HTTP error: {}", resp.status());
-                    self.log(cfg, file_logger::error_entry(cfg.slot, "manual-model-usage", "GET", &url, &msg)).await;
+                    let msg = format!("model-usage-24h HTTP error: {}", resp.status());
+                    self.log(cfg, file_logger::error_entry(cfg.slot, "manual-model-usage-24h", "GET", &url, &msg)).await;
                     (0, 0)
                 }
                 Err(e) => {
-                    self.log(cfg, file_logger::error_entry(cfg.slot, "manual-model-usage", "GET", &url, &e.to_string())).await;
+                    self.log(cfg, file_logger::error_entry(cfg.slot, "manual-model-usage-24h", "GET", &url, &e.to_string())).await;
+                    (0, 0)
+                }
+            }
+        };
+
+        // 3b. Fetch model-usage for 5h window (best effort)
+        let (total_model_calls_5h, total_tokens_5h) = {
+            let url = format!("{}/model-usage?startTime={}&endTime={}", base,
+                urlencoding::encode(&start_5h), urlencoding::encode(&end_5h));
+            self.log(cfg, file_logger::request_entry(cfg.slot, "manual-model-usage-5h", "GET", &url, None)).await;
+            match self.client.get(&url)
+                .header(AUTHORIZATION, auth.clone())
+                .header(ACCEPT_LANGUAGE, "en-US")
+                .header(CONTENT_TYPE, "application/json")
+                .send().await
+            {
+                Ok(resp) if resp.status().is_success() => {
+                    let status = resp.status().as_u16();
+                    let text = resp.text().await.unwrap_or_default();
+                    let resp_json: Option<serde_json::Value> = serde_json::from_str(&text).ok();
+                    self.log(cfg, file_logger::response_entry(cfg.slot, "manual-model-usage-5h", "GET", &url, status, resp_json)).await;
+                    let parsed: Result<ModelUsageApiResponse, _> = serde_json::from_str(&text);
+                    match parsed {
+                        Ok(r) if r.code == 200 => {
+                            let t = r.data.and_then(|d| d.total_usage);
+                            (t.as_ref().map_or(0, |u| u.total_model_call_count),
+                             t.as_ref().map_or(0, |u| u.total_tokens_usage))
+                        }
+                        _ => (0, 0),
+                    }
+                }
+                Ok(resp) => {
+                    let msg = format!("model-usage-5h HTTP error: {}", resp.status());
+                    self.log(cfg, file_logger::error_entry(cfg.slot, "manual-model-usage-5h", "GET", &url, &msg)).await;
+                    (0, 0)
+                }
+                Err(e) => {
+                    self.log(cfg, file_logger::error_entry(cfg.slot, "manual-model-usage-5h", "GET", &url, &e.to_string())).await;
                     (0, 0)
                 }
             }
@@ -557,7 +614,7 @@ impl ApiClient {
         // 4. Fetch tool-usage (best effort)
         let (net_search, web_read, zread, search_mcp) = {
             let url = format!("{}/tool-usage?startTime={}&endTime={}", base,
-                urlencoding::encode(&start), urlencoding::encode(&end));
+                urlencoding::encode(&start_24h), urlencoding::encode(&end));
             self.log(cfg, file_logger::request_entry(cfg.slot, "manual-tool-usage", "GET", &url, None)).await;
             match self.client.get(&url)
                 .header(AUTHORIZATION, auth.clone())
@@ -597,8 +654,10 @@ impl ApiClient {
         Ok(SlotStats {
             level,
             limits,
-            total_model_calls_24h: total_model_calls,
-            total_tokens_24h: total_tokens,
+            total_model_calls_24h,
+            total_tokens_24h,
+            total_model_calls_5h,
+            total_tokens_5h,
             total_network_search_24h: net_search,
             total_web_read_24h: web_read,
             total_zread_24h: zread,
