@@ -1,18 +1,5 @@
 <template>
   <div>
-    <!-- Status Hero -->
-    <div v-if="rtSlot?.enabled">
-        <div v-if="rtSlot.auto_disabled" class="alert alert-soft alert-error text-xs font-bold mb-2">
-           Auto-disabled (quota) &middot; {{ rtSlot.consecutive_errors }} consecutive errors
-        </div>
-        <div v-else-if="rtSlot.wake_auto_disabled" class="alert alert-soft alert-warning text-xs font-bold mb-2">
-           Wake temporarily disabled &middot; {{ rtSlot.wake_consecutive_errors }} consecutive wake errors
-        </div>
-        <div v-else-if="rtSlot.consecutive_errors > 0" class="alert alert-dash alert-warning text-xs font-bold mb-2">
-           {{ rtSlot.consecutive_errors }} error{{ rtSlot.consecutive_errors !== 1 ? 's' : '' }}
-        </div>
-    </div>
-
     <!-- Loading -->
     <div v-if="!stats && !keysStore.loadingStats" class="flex items-center justify-center py-8 text-base-content/30">
         <span class="loading loading-spinner loading-sm mr-2"></span>Loading…
@@ -69,6 +56,24 @@
                   <span class="text-[10px] opacity-30">{{ (lim.unit ?? 3) <= 3 ? 'Reset' : 'Resets' }} {{ lim.next_reset_hms ?? '—' }}</span>
                 </div>
             </div>
+        </div>
+
+        <!-- Error footnotes -->
+        <div v-if="rtSlot?.enabled" class="mt-2 flex flex-col gap-0.5">
+          <div v-if="rtSlot.auto_disabled" class="text-[10px] text-center text-error">
+            Auto-disabled &middot; {{ rtSlot.consecutive_errors }} consecutive quota error{{ rtSlot.consecutive_errors !== 1 ? 's' : '' }}
+          </div>
+          <template v-else>
+            <div v-if="(rtSlot.quota_consecutive_errors || 0) > 0" class="text-[10px] text-center text-warning">
+              {{ rtSlot.quota_consecutive_errors }} quota error{{ rtSlot.quota_consecutive_errors !== 1 ? 's' : '' }}
+            </div>
+            <div v-if="rtSlot.wake_auto_disabled" class="text-[10px] text-center text-error">
+              Wake disabled &middot; {{ rtSlot.wake_consecutive_errors }} consecutive wake error{{ rtSlot.wake_consecutive_errors !== 1 ? 's' : '' }}
+            </div>
+            <div v-else-if="(rtSlot.wake_consecutive_errors || 0) > 0" class="text-[10px] text-center text-error">
+              {{ rtSlot.wake_consecutive_errors }} wake error{{ rtSlot.wake_consecutive_errors !== 1 ? 's' : '' }}
+            </div>
+          </template>
         </div>
     </div>
   </div>

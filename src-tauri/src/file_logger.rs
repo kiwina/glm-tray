@@ -51,12 +51,6 @@ async fn logger_config(app: &tauri::AppHandle) -> Result<LoggerConfig, String> {
 
     if let Some(state) = app.try_state::<crate::SharedState>() {
         let cfg = state.config.read().await;
-        if let Some(path) = cfg.log_directory.as_ref() {
-            let trimmed = path.trim();
-            if !trimmed.is_empty() {
-                dir = PathBuf::from(trimmed);
-            }
-        }
         if cfg.max_log_days > 0 {
             max_days = cfg.max_log_days as i64;
         }

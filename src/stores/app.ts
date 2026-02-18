@@ -32,9 +32,6 @@ export const useAppStore = defineStore('app', () => {
 
         // Apply theme
         document.documentElement.setAttribute('data-theme', 'glm');
-
-        // Check for updates after a short delay
-        setTimeout(() => void checkAndShowUpdate(), 3000);
     }
 
     async function checkAndShowUpdate() {

@@ -27,6 +27,10 @@ fn default_quota_poll_backoff_cap_minutes() -> u64 {
     480
 }
 
+fn default_auto_update() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct KeySlotConfig {
@@ -81,8 +85,6 @@ pub struct AppConfig {
     pub global_quota_url: String,
     #[serde(default = "default_global_request_url")]
     pub global_request_url: String,
-    #[serde(default)]
-    pub log_directory: Option<String>,
     #[serde(default = "default_max_log_days")]
     pub max_log_days: u64,
     #[serde(default = "default_wake_quota_retry_window_minutes")]
@@ -97,6 +99,8 @@ pub struct AppConfig {
     pub mock_url: Option<String>,
     #[serde(default)]
     pub config_version: u32,
+    #[serde(default = "default_auto_update")]
+    pub auto_update: bool,
 }
 
 impl Default for AppConfig {
@@ -112,7 +116,6 @@ impl Default for AppConfig {
             theme: "glm".to_string(),
             global_quota_url: default_global_quota_url(),
             global_request_url: default_global_request_url(),
-            log_directory: None,
             max_log_days: default_max_log_days(),
             wake_quota_retry_window_minutes: default_wake_quota_retry_window_minutes(),
             max_consecutive_errors: default_max_consecutive_errors(),
@@ -120,6 +123,7 @@ impl Default for AppConfig {
             debug: false,
             mock_url: None,
             config_version: CURRENT_CONFIG_VERSION,
+            auto_update: default_auto_update(),
         }
     }
 }

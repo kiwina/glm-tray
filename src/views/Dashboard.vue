@@ -1,6 +1,6 @@
 <template>
   <div class="h-full flex flex-col">
-    <div class="flex-1 overflow-y-auto p-2 main-content">
+    <div class="flex-1 overflow-y-auto p-2 main-content mt-2">
 
     <!-- Key List -->
     <div v-for="slot in enabledSlots" :key="slot.slot"
@@ -19,16 +19,15 @@
             <template v-else-if="getRuntime(slot.slot)?.wake_auto_disabled">
               <span class="badge badge-sm badge-soft badge-warning">WAKE PAUSED</span>
             </template>
-            <template v-else-if="getRuntime(slot.slot) && getRuntime(slot.slot)!.percentage != null">
-              <progress class="progress w-14"
+            <template v-else>
+              <span v-if="(getRuntime(slot.slot)?.quota_consecutive_errors || 0) > 0" class="badge badge-warning badge-xs">quota ×{{ getRuntime(slot.slot)?.quota_consecutive_errors }}</span>
+              <span v-if="(getRuntime(slot.slot)?.wake_consecutive_errors || 0) > 0" class="badge badge-error badge-xs">wake ×{{ getRuntime(slot.slot)?.wake_consecutive_errors }}</span>
+              <progress v-if="getRuntime(slot.slot)?.percentage != null"
+                        class="progress w-14"
                         :class="pctBarClass(getRuntime(slot.slot)!.percentage || 0)"
                         :value="getRuntime(slot.slot)!.percentage || 0"
                         max="100"></progress>
-              <span v-if="(getRuntime(slot.slot)?.quota_consecutive_errors || 0) > 0" class="badge badge-error badge-xs">quota ×{{ getRuntime(slot.slot)?.quota_consecutive_errors }}</span>
-              <span v-if="(getRuntime(slot.slot)?.wake_consecutive_errors || 0) > 0" class="badge badge-warning badge-xs">wake ×{{ getRuntime(slot.slot)?.wake_consecutive_errors }}</span>
-            </template>
-            <template v-else>
-              <span class="text-xs opacity-30">waiting…</span>
+              <span v-else-if="(getRuntime(slot.slot)?.quota_consecutive_errors || 0) === 0 && (getRuntime(slot.slot)?.wake_consecutive_errors || 0) === 0" class="text-xs opacity-30">waiting…</span>
             </template>
          </div>
        </div>

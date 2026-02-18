@@ -68,13 +68,13 @@ impl From<AppConfigV2> for AppConfig {
             config_version: old.config_version,
             global_quota_url: KeySlotConfig::default().quota_url,
             global_request_url: KeySlotConfig::default().request_url.unwrap_or_default(),
-            log_directory: None,
             max_log_days: 7,
             wake_quota_retry_window_minutes: 15,
             max_consecutive_errors: 10,
             quota_poll_backoff_cap_minutes: 480,
             debug: false,
             mock_url: None,
+            auto_update: true,
         }
     }
 }
@@ -156,14 +156,6 @@ fn validate(mut cfg: AppConfig) -> AppConfig {
         cfg.global_request_url = default_global_request;
     }
 
-    cfg.log_directory = cfg.log_directory.and_then(|path| {
-        let trimmed = path.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    });
     cfg.max_log_days = cfg.max_log_days.clamp(1, 365);
     cfg.wake_quota_retry_window_minutes = cfg.wake_quota_retry_window_minutes.clamp(1, 1_440);
     cfg.max_consecutive_errors = cfg.max_consecutive_errors.clamp(1, 1_000);

@@ -71,6 +71,11 @@ onMounted(async () => {
 
     ready.value = true;
 
+    // Auto-check for updates after settings are loaded (respects auto_update preference)
+    if (settingsStore.config?.auto_update !== false) {
+        setTimeout(() => void appStore.checkAndShowUpdate(), 3000);
+    }
+
     // Start runtime polling (every 5 seconds)
     keysStore.startPolling();
 

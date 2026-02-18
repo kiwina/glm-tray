@@ -40,13 +40,13 @@ function defaultConfig(): AppConfig {
     theme: "glm",
     global_quota_url: PLATFORMS.zai.quota,
     global_request_url: PLATFORMS.zai.request,
-    log_directory: "",
     max_log_days: 7,
     wake_quota_retry_window_minutes: 15,
     max_consecutive_errors: 10,
     quota_poll_backoff_cap_minutes: 480,
     debug: false,
     mock_url: null,
+    auto_update: true,
   };
 }
 
@@ -111,13 +111,13 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     theme: config.theme ?? "glm",
     global_quota_url: validGlobalQuota ? global_quota_url : PLATFORMS.zai.quota,
     global_request_url: validGlobalRequest ? global_request_url : PLATFORMS.zai.request,
-    log_directory: (config.log_directory?.trim() || "") || undefined,
     max_log_days,
     wake_quota_retry_window_minutes,
     max_consecutive_errors,
     quota_poll_backoff_cap_minutes,
     debug: config.debug ?? false,
     mock_url: config.mock_url?.trim() || null,
+    auto_update: config.auto_update ?? true,
   };
 }
 

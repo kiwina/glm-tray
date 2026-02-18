@@ -12,15 +12,20 @@ export function dotClass(
         enabled?: boolean;
     } | undefined,
 ): string {
+    // No runtime slot = monitoring is stopped → muted
+    if (!rt) return "bg-base-content/20";
+
     if (
-        rt?.auto_disabled ||
-        rt?.wake_auto_disabled ||
-        (rt?.consecutive_errors && rt.consecutive_errors > 0) ||
-        (rt?.quota_consecutive_errors && rt.quota_consecutive_errors > 0) ||
-        (rt?.wake_consecutive_errors && rt.wake_consecutive_errors > 0)
+        rt.auto_disabled ||
+        rt.wake_auto_disabled ||
+        (rt.consecutive_errors && rt.consecutive_errors > 0) ||
+        (rt.quota_consecutive_errors && rt.quota_consecutive_errors > 0) ||
+        (rt.wake_consecutive_errors && rt.wake_consecutive_errors > 0)
     )
         return "bg-error";
-    if (rt?.enabled || slot?.enabled) return "bg-success";
+
+    // Green only when monitoring is active (rt exists) and slot is enabled in config
+    if (slot?.enabled) return "bg-success";
     return "bg-base-content/20";
 }
 

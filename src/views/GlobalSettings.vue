@@ -14,6 +14,10 @@
         <div class="card bg-base-100 card-border border-base-300 card-sm">
           <div class="card-body p-4 gap-2">
             <p class="text-xs font-semibold opacity-70">Runtime behavior</p>
+            <div v-if="isTauriRuntime" class="flex justify-between items-center">
+              <span class="text-xs">Launch at system startup</span>
+              <input type="checkbox" class="toggle toggle-sm toggle-primary" :checked="autostartEnabled" @change="toggleAutostart" />
+            </div>
             <div class="flex justify-between items-center">
               <span class="text-xs">Wake confirmation window (minutes)</span>
               <input class="input input-sm input-bordered w-20" type="number" min="1" max="1440" v-model.number="form.wake_quota_retry_window_minutes" />
@@ -33,15 +37,7 @@
         <div class="card bg-base-100 card-border border-base-300 card-sm">
           <div class="card-body p-4 gap-2">
             <p class="text-xs font-semibold opacity-70">Logging</p>
-            <div class="form-control">
-              <label class="label py-1">
-                <span class="label-text text-xs">Log directory (optional)</span>
-              </label>
-              <input class="input input-sm input-bordered w-full" type="text" placeholder="Leave blank for default app data path" v-model="form.log_directory" />
-              <label class="label py-1 -mt-1">
-                <span class="label-text-alt text-[10px] opacity-50">Example: /tmp/glm-tray-logs</span>
-              </label>
-            </div>
+
             <div class="flex justify-between items-center">
               <span class="text-xs">Keep log files (days)</span>
               <input class="input input-sm input-bordered w-20" type="number" min="1" max="365" v-model.number="form.max_log_days" />
@@ -69,6 +65,51 @@
           </div>
         </div>
 
+        <!-- Updates -->
+        <div class="card bg-base-100 card-border border-base-300 card-sm">
+          <div class="card-body p-4 gap-2">
+            <p class="text-xs font-semibold opacity-70">Updates</p>
+            <div v-if="isTauriRuntime" class="flex justify-between items-center">
+              <span class="text-xs">Check for updates on launch</span>
+              <input type="checkbox" class="toggle toggle-sm toggle-primary" v-model="form.auto_update" />
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-xs">Current version</span>
+              <span class="text-xs font-semibold">{{ appStore.version || 'dev' }}</span>
+            </div>
+
+            <!-- Update available banner -->
+            <div v-if="appStore.updateInfo" class="alert alert-soft alert-info text-xs p-2 mt-1">
+              <div class="flex flex-col gap-1 w-full">
+                <span class="font-bold">v{{ appStore.updateInfo.latest_version }} available</span>
+                <span class="opacity-70 line-clamp-2">{{ appStore.updateInfo.release_notes }}</span>
+                <!-- Download progress -->
+                <div v-if="appStore.updateStatus === 'downloading'" class="w-full mt-1">
+                  <progress class="progress progress-primary w-full" :value="appStore.updateProgress" max="100"></progress>
+                  <span class="text-[10px] opacity-60">Downloading… {{ appStore.updateProgress }}%</span>
+                </div>
+                <div class="flex gap-2 mt-1">
+                  <button v-if="appStore.updateStatus === 'idle'" type="button" class="btn btn-xs btn-primary" @click="appStore.installUpdate()">
+                    Download & Install
+                  </button>
+                  <button v-if="appStore.updateStatus === 'ready'" type="button" class="btn btn-xs btn-success" @click="appStore.restartApp()">
+                    Restart to finish
+                  </button>
+                  <button v-if="appStore.updateStatus === 'idle'" type="button" class="btn btn-xs btn-ghost" @click="appStore.dismissUpdate()">
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Check now button -->
+            <button v-if="isTauriRuntime" type="button" class="btn btn-xs btn-outline btn-block mt-1" :disabled="checking" @click="checkNow">
+              <span v-if="checking" class="loading loading-spinner loading-xs"></span>
+              <span v-else>{{ checkLabel }}</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Info card -->
         <div class="card bg-base-100 card-border border-base-300 card-sm">
           <div class="card-body p-4 gap-1">
@@ -79,10 +120,6 @@
             <div class="flex items-center justify-between text-sm">
               <span>Runtime status</span>
               <span class="font-semibold">{{ status }}</span>
-            </div>
-             <div class="flex items-center justify-between text-sm">
-              <span>Version</span>
-              <span class="font-semibold">{{ appStore.version || 'dev' }}</span>
             </div>
             <div class="text-xs mt-2">By Kiwina with <span class="text-error">❤</span></div>
             <div class="text-xs"><a href="https://z.ai/subscribe?ic=GONVESHW5A" class="link link-hover" target="_blank" rel="noopener">Subscribe to z.ai coding plan</a></div>
@@ -102,31 +139,79 @@ import { useSettingsStore } from '../stores/settings';
 import { useKeysStore } from '../stores/keys';
 import { useAppStore } from '../stores/app';
 import { normalizeConfig } from '../lib/api';
+import { isTauriRuntime } from '../lib/constants';
 
 const settingsStore = useSettingsStore();
 const keysStore = useKeysStore();
 const appStore = useAppStore();
 
 const formError = ref('');
+const autostartEnabled = ref(false);
+
+// Update UI state
+const checking = ref(false);
+const checkLabel = ref('Check for updates');
+
+async function checkNow() {
+    checking.value = true;
+    checkLabel.value = 'Check for updates';
+    try {
+        await appStore.checkAndShowUpdate();
+        if (!appStore.updateInfo) {
+            checkLabel.value = `You're up to date`;
+        }
+    } catch {
+        checkLabel.value = 'Check failed — try again';
+    } finally {
+        checking.value = false;
+    }
+}
+
+async function loadAutostartState() {
+    if (!isTauriRuntime) return;
+    try {
+        const { isEnabled } = await import('@tauri-apps/plugin-autostart');
+        autostartEnabled.value = await isEnabled();
+    } catch {
+        // plugin not available (e.g., dev mode without Tauri backend)
+    }
+}
+
+async function toggleAutostart() {
+    if (!isTauriRuntime) return;
+    try {
+        if (autostartEnabled.value) {
+            const { disable } = await import('@tauri-apps/plugin-autostart');
+            await disable();
+            autostartEnabled.value = false;
+        } else {
+            const { enable } = await import('@tauri-apps/plugin-autostart');
+            await enable();
+            autostartEnabled.value = true;
+        }
+    } catch (e) {
+        console.error('Failed to toggle autostart:', e);
+    }
+}
 
 const form = ref({
-    log_directory: '',
     max_log_days: 7,
     wake_quota_retry_window_minutes: 15,
     max_consecutive_errors: 10,
     quota_poll_backoff_cap_minutes: 480,
     debug: false,
     mock_url: '',
+    auto_update: true,
 });
 
 const snapshot = ref({
-    log_directory: '' as string | undefined | null,
     max_log_days: 7,
     wake_quota_retry_window_minutes: 15,
     max_consecutive_errors: 10,
     quota_poll_backoff_cap_minutes: 480,
     debug: false,
     mock_url: '' as string | null,
+    auto_update: true,
 });
 
 const enabledSlots = computed(() => {
@@ -153,35 +238,35 @@ function loadForm() {
     const n = normalizeConfig(cfg);
 
     form.value = {
-        log_directory: n.log_directory ?? '',
         max_log_days: n.max_log_days,
         wake_quota_retry_window_minutes: n.wake_quota_retry_window_minutes,
         max_consecutive_errors: n.max_consecutive_errors,
         quota_poll_backoff_cap_minutes: n.quota_poll_backoff_cap_minutes,
         debug: n.debug,
         mock_url: n.mock_url ?? '',
+        auto_update: n.auto_update,
     };
 
     snapshot.value = {
-        log_directory: n.log_directory,
         max_log_days: n.max_log_days,
         wake_quota_retry_window_minutes: n.wake_quota_retry_window_minutes,
         max_consecutive_errors: n.max_consecutive_errors,
         quota_poll_backoff_cap_minutes: n.quota_poll_backoff_cap_minutes,
         debug: n.debug,
         mock_url: n.mock_url,
+        auto_update: n.auto_update,
     };
 }
 
 const dirty = computed(() => {
     return (
-        (form.value.log_directory || '') !== (snapshot.value.log_directory ?? '') ||
         form.value.max_log_days !== snapshot.value.max_log_days ||
         form.value.wake_quota_retry_window_minutes !== snapshot.value.wake_quota_retry_window_minutes ||
         form.value.max_consecutive_errors !== snapshot.value.max_consecutive_errors ||
         form.value.quota_poll_backoff_cap_minutes !== snapshot.value.quota_poll_backoff_cap_minutes ||
         form.value.debug !== snapshot.value.debug ||
-        (form.value.mock_url || '') !== (snapshot.value.mock_url ?? '')
+        (form.value.mock_url || '') !== (snapshot.value.mock_url ?? '') ||
+        form.value.auto_update !== snapshot.value.auto_update
     );
 });
 
@@ -216,13 +301,13 @@ async function save() {
 
     const nextConfig = normalizeConfig({
         ...settingsStore.config,
-        log_directory: form.value.log_directory.trim() || undefined,
         max_log_days: form.value.max_log_days,
         wake_quota_retry_window_minutes: form.value.wake_quota_retry_window_minutes,
         max_consecutive_errors: form.value.max_consecutive_errors,
         quota_poll_backoff_cap_minutes: form.value.quota_poll_backoff_cap_minutes,
         debug: form.value.debug,
         mock_url: form.value.mock_url.trim() || null,
+        auto_update: form.value.auto_update,
     });
 
     await settingsStore.saveSettings(nextConfig);
@@ -231,6 +316,7 @@ async function save() {
 
 onMounted(() => {
     loadForm();
+    loadAutostartState();
 });
 
 watch(() => settingsStore.config, () => {

@@ -26,7 +26,6 @@ export interface AppConfig {
   theme: string;
   global_quota_url: string;
   global_request_url: string;
-  log_directory?: string | null;
   max_log_days: number;
   wake_quota_retry_window_minutes: number;
   max_consecutive_errors: number;
@@ -34,6 +33,7 @@ export interface AppConfig {
   debug: boolean;
   mock_url?: string | null;
   config_version?: number;
+  auto_update: boolean;
 }
 
 export interface SlotRuntimeStatus {
