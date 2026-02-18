@@ -29,22 +29,3 @@ export function detectPlatform(quotaUrl: string): Platform {
   if (quotaUrl.includes("bigmodel.cn")) return "bigmodel";
   return "zai";
 }
-
-export function defaultSlot(slot: number) {
-  return {
-    slot,
-    name: "",
-    api_key: "",
-    quota_url: "https://api.z.ai/api/monitor/usage/quota/limit",
-    request_url: "https://api.z.ai/api/coding/paas/v4/chat/completions",
-    poll_interval_minutes: 30,
-    enabled: false,
-    logging: false,
-    schedule_interval_enabled: false,
-    schedule_interval_minutes: 60,
-    schedule_after_reset_enabled: false,
-    schedule_after_reset_minutes: 10,
-    schedule_times_enabled: false,
-    schedule_times: [],
-  };
-}
