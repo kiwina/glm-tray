@@ -7,11 +7,21 @@ import type { AppConfig, QuotaUpdateEvent } from "./lib/types";
 import { isTauriRuntime } from "./lib/constants";
 import { setConfigState, setAppVersion, currentView, currentKeyTab, deleteCachedStats, latestRuntime } from "./lib/state";
 import { applyTheme } from "./lib/helpers";
-import { backendInvoke, refreshRuntimeStatus } from "./lib/api";
+import { backendInvoke, refreshRuntimeStatus, hasEnabledSlotWithKey, syncMonitorButtons } from "./lib/api";
 import { createSidebar } from "./lib/sidebar";
 import { render } from "./lib/views/render";
 import { renderStatsTab } from "./lib/views/tabs/stats";
 import { checkAndShowUpdate } from "./lib/update";
+
+function syncWarmupButton(): void {
+  const warmupBtn = document.getElementById("warmup-btn") as HTMLButtonElement | null;
+  if (!warmupBtn) return;
+  const hasEnabledSlot = hasEnabledSlotWithKey();
+  warmupBtn.disabled = !hasEnabledSlot;
+  warmupBtn.title = hasEnabledSlot
+    ? "Wake keys that are not ready"
+    : "Add an API key first";
+}
 
 window.addEventListener("DOMContentLoaded", async () => {
   createSidebar();
@@ -32,28 +42,50 @@ window.addEventListener("DOMContentLoaded", async () => {
   setConfigState(config);
   applyTheme();
   render();
+  syncWarmupButton();
 
   const monBtn = document.getElementById("monitor-btn") as HTMLButtonElement;
   monBtn.disabled = true;
 
   monBtn.addEventListener("click", async () => {
     monBtn.disabled = true;
-    const isMonitoring = latestRuntime?.monitoring ?? false;
-    await backendInvoke(isMonitoring ? "stop_monitoring" : "start_monitoring");
-    await refreshRuntimeStatus();
-    monBtn.disabled = false;
+    if (!hasEnabledSlotWithKey() && !latestRuntime?.monitoring) {
+      syncMonitorButtons();
+      return;
+    }
+
+    try {
+      const isMonitoring = latestRuntime?.monitoring ?? false;
+      await backendInvoke(isMonitoring ? "stop_monitoring" : "start_monitoring");
+      await refreshRuntimeStatus();
+      syncMonitorButtons();
+    } catch (err) {
+      console.warn("monitoring command failed:", err);
+      await refreshRuntimeStatus().catch(() => syncMonitorButtons());
+    } finally {
+      monBtn.disabled = false;
+    }
   });
 
   document.getElementById("warmup-btn")?.addEventListener("click", async () => {
     const warmupBtn = document.getElementById("warmup-btn") as HTMLButtonElement;
+    if (!hasEnabledSlotWithKey()) {
+      syncWarmupButton();
+      return;
+    }
     warmupBtn.classList.add("warming-up");
     warmupBtn.disabled = true;
     try {
       await backendInvoke("warmup_all");
     } finally {
       warmupBtn.classList.remove("warming-up");
+      syncWarmupButton();
       warmupBtn.disabled = false;
     }
+  });
+
+  document.getElementById("global-settings-btn")?.addEventListener("click", () => {
+    render("settings");
   });
 
   document.querySelector(".sidebar-logo-link")?.addEventListener("click", async (e) => {
@@ -66,7 +98,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   await refreshRuntimeStatus();
-  setInterval(() => void refreshRuntimeStatus(), 5000);
+  setInterval(() => void refreshRuntimeStatus().then(syncWarmupButton), 5000);
 
   // Listen for quota-updated events from backend and refresh stats
   if (isTauriRuntime) {
@@ -83,6 +115,10 @@ window.addEventListener("DOMContentLoaded", async () => {
         }
       }
     ).catch((err) => console.warn("Failed to listen for quota-updated:", err));
+
+    listen<boolean>("monitoring-changed", (_event) => {
+      void refreshRuntimeStatus().then(syncWarmupButton);
+    }).catch((err) => console.warn("Failed to listen for monitoring changes:", err));
   }
 
   // Check for updates on startup (after a short delay)

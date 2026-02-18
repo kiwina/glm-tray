@@ -13,6 +13,7 @@ GLM Tray helps you:
 - **Keep keys active** — Automatically send requests to prevent keys from becoming stale
 - **Track multiple keys** — Manage up to 4 API keys in one place
 - **Stay informed** — Get visual indicators in your system tray
+- **Tune global defaults** — Set shared API endpoints and logging retention in one app-level settings view
 
 ## Screenshots
 
@@ -77,12 +78,34 @@ Prevent your API keys from going stale with three scheduling modes:
 
 You can enable multiple modes simultaneously.
 
+#### Wake confirmation and retry
+
+Open the home page (not a key tab) and click the gear icon in the header to update app-wide defaults.
+
+Wake requests are not immediately considered successful until quota confirms that warmup restarted.
+
+- The app sends wake requests based on your selected schedule mode(s).
+- After a wake send, it marks the slot `wake_pending` and triggers an immediate quota poll.
+- If quota shows a valid TOKENS `nextResetTime` advance, wake is confirmed and `wake_pending` is cleared.
+- If quota confirms with missing/unchanged `nextResetTime`, wake confirmation failure is counted in `wake_consecutive_errors`.
+- While pending, quota is retried every minute for up to the configured window (`wake_quota_retry_window_minutes`).
+- After that window, the app performs one forced wake retry.
+- If wake still cannot be confirmed and wake errors reach the configured `max_consecutive_errors`, the slot is temporarily auto-disabled for wake.
+
+Global app settings now include:
+- **Default quota URL** (`global_quota_url`) and **default LLM URL** (`global_request_url`)
+- **Log directory** (`log_directory`) to redirect JSONL output
+- **Log retention days** (`max_log_days`)
+
 ### JSONL Logging (Optional)
 
 Enable logging to debug API issues:
 - Logs are stored in daily files
 - Includes full request/response data
-- Located in your app data folder
+- Adds `flow_id` to tie request and response log lines together
+- Adds `phase` (`request`, `response`, `error`, `event`) for easier filtering
+- Located in your app data folder by default; when `log_directory` is set, logs are written to `<log_directory>/logs`.
+- Scheduler events now include important moments like wake pending set/cleared, retry windows, and task start/stop decisions
 
 ---
 
@@ -189,12 +212,24 @@ Config is stored in the platform's application data directory:
 | macOS | `~/Library/Application Support/glm-tray/settings.json` |
 | Linux | `~/.config/glm-tray/settings.json` |
 
+The `settings.json` file now also persists:
+- `global_quota_url`
+- `global_request_url`
+- `log_directory` (optional)
+- `max_log_days`
+
 ### Logs
 
 When logging is enabled, requests and responses are written to daily JSONL files:
 
 ```
 {app_data_dir}/logs/2024-01-15.jsonl
+```
+
+Custom directory example:
+
+```
+{log_directory}/logs/2024-01-15.jsonl
 ```
 
 ---

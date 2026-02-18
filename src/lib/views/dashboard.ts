@@ -12,7 +12,14 @@ export function renderDashboard(): void {
   const rt = latestRuntime ?? { monitoring: false, slots: [] };
   const config = configState ?? defaultConfig();
   const enabledSlots = config.slots.filter((s) => s.enabled);
-  const errorCount = rt.slots.reduce((a, s) => a + s.consecutive_errors, 0);
+  const errorCount = rt.slots.reduce(
+    (a, s) =>
+      a +
+      s.quota_consecutive_errors +
+      s.wake_consecutive_errors +
+      (s.quota_consecutive_errors === 0 ? s.consecutive_errors : 0),
+    0,
+  );
 
   const monLabel = rt.monitoring
     ? `<span class="text-success">● Monitoring</span>`
@@ -41,18 +48,24 @@ export function renderDashboard(): void {
     let rightSide = "";
     if (rtSlot?.auto_disabled) {
       rightSide = `<span class="badge badge-sm badge-soft badge-error">DISABLED</span>`;
+    } else if (rtSlot?.wake_auto_disabled) {
+      rightSide = `<span class="badge badge-sm badge-soft badge-warning">WAKE PAUSED</span>`;
     } else if (rtSlot && rtSlot.percentage != null) {
       const pct = rtSlot.percentage;
       const reset = rtSlot.next_reset_hms ?? "--:--:--";
-      const errBadge =
-        rtSlot.consecutive_errors > 0
-          ? `<span class="badge badge-error badge-xs">\u00D7${rtSlot.consecutive_errors}</span>`
+      const quotaErrBadge =
+        rtSlot.quota_consecutive_errors > 0
+          ? `<span class="badge badge-error badge-xs">quota \u00D7${rtSlot.quota_consecutive_errors}</span>`
+        : "";
+      const wakeErrBadge =
+        rtSlot.wake_consecutive_errors > 0
+          ? `<span class="badge badge-warning badge-xs">wake \u00D7${rtSlot.wake_consecutive_errors}</span>`
           : "";
       rightSide = `
         <progress class="progress ${pctBarClass(pct)} w-14" value="${pct}" max="100"></progress>
         <span class="text-sm font-bold tabular-nums min-w-8 text-right">${pct}%</span>
         <span class="text-[10px] opacity-40 tabular-nums">${reset}</span>
-        ${errBadge}`;
+        ${quotaErrBadge}${wakeErrBadge}`;
     } else {
       rightSide = `<span class="text-xs opacity-30">waiting\u2026</span>`;
     }

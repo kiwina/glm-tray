@@ -11,13 +11,20 @@ use std::sync::Arc;
 use log::{error, info, warn};
 use models::{AppConfig, RuntimeStatus};
 use models::SlotStats;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::sync::{Mutex, RwLock};
 
 pub struct SharedState {
     pub config: Arc<RwLock<AppConfig>>,
     pub runtime_status: Arc<RwLock<RuntimeStatus>>,
     pub scheduler: Arc<Mutex<scheduler::SchedulerManager>>,
+}
+
+fn has_enabled_slot_with_key(config: &AppConfig) -> bool {
+    config
+        .slots
+        .iter()
+        .any(|slot| slot.enabled && !slot.api_key.trim().is_empty())
 }
 
 #[tauri::command]
@@ -88,6 +95,9 @@ async fn warmup_slot(app: tauri::AppHandle, state: tauri::State<'_, SharedState>
     }
 
     let client = api_client::ApiClient::new(Some(app))?;
+    if is_slot_quota_full_realtime(&client, &state.runtime_status, slot_cfg).await {
+        return Err("slot reset window is still active".into());
+    }
     client.warmup_key(slot_cfg).await?;
     info!("warmup slot {} succeeded", slot);
     Ok(())
@@ -114,22 +124,37 @@ pub async fn start_monitoring_internal(app: tauri::AppHandle) -> Result<(), Stri
     info!("starting monitoring");
     let state = app.state::<SharedState>();
     let settings = state.config.read().await.clone();
-    let enabled = settings.slots.iter().filter(|s| s.enabled && !s.api_key.trim().is_empty()).count();
+    let enabled = settings
+        .slots
+        .iter()
+        .filter(|s| s.enabled && !s.api_key.trim().is_empty())
+        .count();
+
+    if enabled == 0 {
+        info!("start monitoring skipped: no enabled slots configured");
+        let _ = app.emit("monitoring-changed", false);
+        return Ok(());
+    }
+
     info!("monitoring {enabled} enabled slot(s)");
     let runtime_status = state.runtime_status.clone();
     let mut scheduler = state.scheduler.lock().await;
     scheduler.start(app.clone(), settings, runtime_status).await;
+    let _ = app.emit("monitoring-changed", true);
     Ok(())
 }
 
 pub async fn stop_monitoring_internal(app: tauri::AppHandle) -> Result<(), String> {
     info!("stopping monitoring");
     let state = app.state::<SharedState>();
+    let config = state.config.read().await.clone();
     let mut scheduler = state.scheduler.lock().await;
     scheduler.stop().await;
     scheduler::reset_runtime(&state.runtime_status).await;
     let snapshot = state.runtime_status.read().await.clone();
-    tray::refresh_tray(&app, snapshot)?;
+    let has_ready_slots = has_enabled_slot_with_key(&config);
+    tray::refresh_tray(&app, snapshot, has_ready_slots)?;
+    let _ = app.emit("monitoring-changed", false);
     Ok(())
 }
 
@@ -137,10 +162,18 @@ pub async fn warmup_all_internal(app: tauri::AppHandle) -> Result<(), String> {
     info!("warmup all keys requested");
     let state = app.state::<SharedState>();
     let config = state.config.read().await.clone();
+    let runtime_status = state.runtime_status.clone();
     let client = api_client::ApiClient::new(Some(app.clone()))?;
 
     for slot_cfg in &config.slots {
         if !slot_cfg.enabled || slot_cfg.api_key.trim().is_empty() {
+            continue;
+        }
+        if is_slot_quota_full_realtime(&client, &runtime_status, slot_cfg).await {
+            warn!(
+                "slot {} next reset window is still active, skipping warmup",
+                slot_cfg.slot
+            );
             continue;
         }
         info!("warming up slot {}", slot_cfg.slot);
@@ -152,6 +185,54 @@ pub async fn warmup_all_internal(app: tauri::AppHandle) -> Result<(), String> {
 
     info!("warmup all keys completed");
     Ok(())
+}
+
+async fn is_slot_quota_full_realtime(
+    client: &api_client::ApiClient,
+    runtime_status: &Arc<RwLock<RuntimeStatus>>,
+    slot_cfg: &models::KeySlotConfig,
+) -> bool {
+    let now_ms = chrono::Local::now().timestamp_millis();
+
+    let cached_reset = {
+        let runtime = runtime_status.read().await;
+        runtime
+            .slots
+            .get(slot_cfg.slot.saturating_sub(1))
+            .and_then(|slot_status| slot_status.last_updated_epoch_ms)
+    };
+
+    if let Some(next_reset_ms) = cached_reset {
+        // Trust a still-active cached timer; recheck when expired/missing.
+        if next_reset_ms > now_ms {
+            return false;
+        }
+    }
+
+    let slot_idx = slot_cfg.slot.saturating_sub(1);
+    match client.fetch_quota(slot_cfg).await {
+        Ok(snapshot) => {
+            if let Some(current) = runtime_status.write().await.slots.get_mut(slot_idx) {
+                current.percentage = Some(snapshot.percentage);
+                current.timer_active = snapshot.timer_active;
+                current.next_reset_hms = snapshot.next_reset_hms;
+                current.last_updated_epoch_ms = snapshot.next_reset_epoch_ms;
+            }
+
+            match snapshot.next_reset_epoch_ms {
+                Some(next_reset_ms) => next_reset_ms <= now_ms,
+                None => true,
+            }
+        }
+        Err(err) => {
+            warn!(
+                "slot {} quota pre-check failed during warmup: {}",
+                slot_cfg.slot,
+                err
+            );
+            false
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -174,8 +255,7 @@ pub fn run() {
             }
 
             let app_handle = app.handle().clone();
-
-            tauri::async_runtime::block_on(async {
+            let (initial_config, _) = tauri::async_runtime::block_on(async {
                 let initial_config = match config::load_config(&app_handle).await {
                     Ok(cfg) => cfg,
                     Err(err) => {
@@ -183,18 +263,21 @@ pub fn run() {
                         AppConfig::default()
                     }
                 };
+                let has_ready_slots = has_enabled_slot_with_key(&initial_config);
 
                 app.manage(SharedState {
-                    config: Arc::new(RwLock::new(initial_config)),
+                    config: Arc::new(RwLock::new(initial_config.clone())),
                     runtime_status: Arc::new(RwLock::new(RuntimeStatus::default())),
                     scheduler: Arc::new(Mutex::new(scheduler::SchedulerManager::new())),
                 });
 
                 // Clean up old log files (keep max 7 days)
                 file_logger::cleanup_old_logs(&app_handle).await;
+                (initial_config, has_ready_slots)
             });
 
-            tray::setup_tray(&app_handle)?;
+            let has_ready_slots = has_enabled_slot_with_key(&initial_config);
+            tray::setup_tray(&app_handle, has_ready_slots)?;
 
             // Auto-start monitoring on launch
             let startup_handle = app_handle.clone();

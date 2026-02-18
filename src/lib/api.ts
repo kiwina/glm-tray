@@ -2,11 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AppConfig, SlotStats, RuntimeStatus } from "./types";
 import { STORAGE_KEY, isTauriRuntime } from "./constants";
 import {
+  configState,
   cachedStats,
   currentView,
   currentKeyTab,
   statsLoading,
   previewRuntime,
+  latestRuntime,
   setPreviewRuntime,
   setLatestRuntime,
   setCachedStats,
@@ -16,6 +18,20 @@ import { defaultConfig, normalizeConfig, defaultRuntimeStatus, slotByView, esc }
 import { updateSidebar } from "./sidebar";
 import { renderDashboard } from "./views/dashboard";
 import { renderStatsTab } from "./views/tabs/stats";
+
+export function hasSlotWithKey(): boolean {
+  if (!configState) {
+    return false;
+  }
+
+  return configState.slots.some(
+    (slot: AppConfig["slots"][number]) =>
+      slot.api_key.trim().length > 0,
+  );
+}
+
+// Keep old name as alias for backwards compat (used in main.ts)
+export const hasEnabledSlotWithKey = hasSlotWithKey;
 
 export async function backendInvoke<T>(
   command: string,
@@ -41,6 +57,9 @@ export async function backendInvoke<T>(
       return next as T;
     }
     case "start_monitoring":
+      if (!hasEnabledSlotWithKey()) {
+        return undefined as T;
+      }
       setPreviewRuntime({
         monitoring: true,
         slots: config.slots.map((s) => ({
@@ -51,8 +70,13 @@ export async function backendInvoke<T>(
           percentage: s.enabled ? Math.floor(Math.random() * 100) : null,
           next_reset_hms: s.enabled ? "--:--:--" : null,
           last_error: null,
+          wake_consecutive_errors: 0,
+          quota_consecutive_errors: 0,
           last_updated_epoch_ms: null,
           consecutive_errors: 0,
+          wake_pending: false,
+          wake_reset_epoch_ms: null,
+          wake_auto_disabled: false,
           auto_disabled: false,
         })),
       });
@@ -63,6 +87,9 @@ export async function backendInvoke<T>(
     case "get_runtime_status":
       return previewRuntime as T;
     case "warmup_all":
+      if (!hasEnabledSlotWithKey()) {
+        return undefined as T;
+      }
       await new Promise((r) => setTimeout(r, 3000));
       return undefined as T;
     case "fetch_slot_stats": {
@@ -114,26 +141,36 @@ export async function loadStats(slotNum: number): Promise<void> {
 export async function refreshRuntimeStatus(): Promise<void> {
   const rt = await backendInvoke<RuntimeStatus>("get_runtime_status");
   setLatestRuntime(rt);
-  syncButtons(rt.monitoring);
+  syncButtons(rt.monitoring, hasEnabledSlotWithKey());
   updateSidebar();
   if (currentView === "dashboard") {
     renderDashboard();
   }
 }
 
-function syncButtons(monitoring: boolean): void {
+export function syncMonitorButtons(): void {
+  syncButtons(latestRuntime?.monitoring ?? false, hasEnabledSlotWithKey());
+}
+
+function syncButtons(monitoring: boolean, hasEnabledSlot: boolean): void {
   const btn = document.getElementById("monitor-btn") as HTMLButtonElement | null;
   if (!btn) return;
-  btn.disabled = false;
   if (monitoring) {
+    btn.disabled = false;
     btn.title = "Stop monitoring";
-    btn.className = "nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent text-error cursor-pointer hover:bg-error/10 transition";
+    btn.className =
+      "nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent text-error cursor-pointer hover:bg-error/10 transition";
     btn.innerHTML = `
       <svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
       <span class="text-[10px] font-medium tracking-wide">Stop</span>`;
   } else {
-    btn.title = "Start monitoring";
-    btn.className = "nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent text-base-content/60 cursor-pointer hover:text-base-content hover:bg-base-content/[.04] transition";
+    btn.disabled = !hasEnabledSlot;
+    btn.title = hasEnabledSlot
+      ? "Start monitoring all keys"
+      : "Add an API key first";
+    btn.className = hasEnabledSlot
+      ? "nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent text-base-content/60 cursor-pointer hover:text-base-content hover:bg-base-content/[.04] transition"
+      : "nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent text-base-content/30 cursor-not-allowed opacity-40";
     btn.innerHTML = `
       <svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
       <span class="text-[10px] font-medium tracking-wide">Start</span>`;

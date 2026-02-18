@@ -35,7 +35,12 @@ export function renderStatsTab(tc: HTMLDivElement): void {
     if (rtSlot.auto_disabled) {
       heroHtml = `
         <div class="alert alert-soft alert-error text-xs font-bold mb-2">
-          Auto-disabled &middot; ${rtSlot.consecutive_errors} consecutive errors
+          Auto-disabled (quota) &middot; ${rtSlot.consecutive_errors} consecutive errors
+        </div>`;
+    } else if (rtSlot.wake_auto_disabled) {
+      heroHtml = `
+        <div class="alert alert-soft alert-warning text-xs font-bold mb-2">
+          Wake temporarily disabled &middot; ${rtSlot.wake_consecutive_errors} consecutive wake errors
         </div>`;
     } else if (rtSlot.consecutive_errors > 0) {
       heroHtml = `

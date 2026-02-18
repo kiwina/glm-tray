@@ -1,11 +1,15 @@
 use chrono::{Local, TimeZone};
 use log::{debug, info};
 use reqwest::header::{ACCEPT_LANGUAGE, AUTHORIZATION, CONTENT_TYPE};
+use std::time::Instant;
+use std::sync::atomic::{AtomicU64, Ordering};
 use serde_json::json;
 
 use crate::file_logger;
 use crate::models::{KeySlotConfig, QuotaApiResponse, QuotaApiResponseFull, QuotaSnapshot,
     ModelUsageApiResponse, ToolUsageApiResponse, SlotStats, LimitInfo, UsageDetailInfo};
+
+static FLOW_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone)]
 pub struct ApiClient {
@@ -42,6 +46,12 @@ impl ApiClient {
         }
     }
 
+    fn next_flow_id(&self, cfg: &KeySlotConfig, action: &str) -> String {
+        let seq = FLOW_SEQUENCE.fetch_add(1, Ordering::SeqCst);
+        let ts = Local::now().timestamp_millis();
+        format!("{ts}_{action}_slot{}_{}", cfg.slot, seq)
+    }
+
     pub async fn warmup_key(&self, cfg: &KeySlotConfig) -> Result<(), String> {
         let Some(url) = cfg.request_url.clone() else {
             return Err("no request URL configured".to_string());
@@ -56,9 +66,22 @@ impl ApiClient {
         });
 
         info!("slot {}: sending warmup request to {}", cfg.slot, url);
-        self.log(cfg, file_logger::request_entry(cfg.slot, "manual-warmup", "POST", &url, Some(body.clone()))).await;
+        let flow_id = self.next_flow_id(cfg, "manual-warmup");
+        self.log(
+            cfg,
+            file_logger::request_entry_with_id(
+                cfg.slot,
+                "manual-warmup",
+                "POST",
+                &url,
+                Some(body.clone()),
+                flow_id.clone(),
+            ),
+        )
+        .await;
+        let start = Instant::now();
 
-        let response = self
+        let response = match self
             .client
             .post(&url)
             .header(AUTHORIZATION, Self::auth_header(&cfg.api_key))
@@ -67,17 +90,57 @@ impl ApiClient {
             .json(&body)
             .send()
             .await
-            .map_err(|err| {
+        {
+            Ok(response) => response,
+            Err(err) => {
                 let msg = format!("warmup request failed: {err}");
-                msg
-            })?;
+                self.log(
+                    cfg,
+                    file_logger::error_entry_with_id(
+                        cfg.slot,
+                        "manual-warmup",
+                        "POST",
+                        &url,
+                        &msg,
+                        flow_id,
+                    ),
+                )
+                .await;
+                return Err(msg);
+            }
+        };
 
         let status = response.status();
-        self.log(cfg, file_logger::response_entry(cfg.slot, "manual-warmup", "POST", &url, status.as_u16(), None)).await;
+        let elapsed = start.elapsed().as_millis() as u64;
+        self.log(
+            cfg,
+            file_logger::response_entry_with_timing_and_id(
+                cfg.slot,
+                "manual-warmup",
+                "POST",
+                &url,
+                status.as_u16(),
+                None,
+                elapsed,
+                flow_id.clone(),
+            ),
+        )
+        .await;
 
         if !status.is_success() {
             let msg = format!("warmup HTTP error: {}", status);
-            self.log(cfg, file_logger::error_entry(cfg.slot, "manual-warmup", "POST", &url, &msg)).await;
+            self.log(
+                cfg,
+                file_logger::error_entry_with_id(
+                    cfg.slot,
+                    "manual-warmup",
+                    "POST",
+                    &url,
+                    &msg,
+                    flow_id,
+                ),
+            )
+            .await;
             return Err(msg);
         }
 
@@ -99,9 +162,22 @@ impl ApiClient {
         });
 
         info!("slot {}: sending scheduled wake request to {}", cfg.slot, url);
-        self.log(cfg, file_logger::request_entry(cfg.slot, "scheduled-wake", "POST", &url, Some(body.clone()))).await;
+        let flow_id = self.next_flow_id(cfg, "scheduled-wake");
+        self.log(
+            cfg,
+            file_logger::request_entry_with_id(
+                cfg.slot,
+                "scheduled-wake",
+                "POST",
+                &url,
+                Some(body.clone()),
+                flow_id.clone(),
+            ),
+        )
+        .await;
+        let start = Instant::now();
 
-        let response = self
+        let response = match self
             .client
             .post(&url)
             .header(AUTHORIZATION, Self::auth_header(&cfg.api_key))
@@ -110,17 +186,59 @@ impl ApiClient {
             .json(&body)
             .send()
             .await
-            .map_err(|err| {
+        {
+            Ok(response) => response,
+            Err(err) => {
                 let msg = format!("wake request failed: {err}");
-                msg
-            })?;
+                let elapsed = start.elapsed().as_millis() as u64;
+                let _ = elapsed;
+                self.log(
+                    cfg,
+                    file_logger::error_entry_with_id(
+                        cfg.slot,
+                        "scheduled-wake",
+                        "POST",
+                        &url,
+                        &msg,
+                        flow_id,
+                    ),
+                )
+                .await;
+                return Err(msg);
+            }
+        };
 
         let status = response.status();
-        self.log(cfg, file_logger::response_entry(cfg.slot, "scheduled-wake", "POST", &url, status.as_u16(), None)).await;
+        let elapsed = start.elapsed().as_millis() as u64;
+        self.log(
+            cfg,
+            file_logger::response_entry_with_timing_and_id(
+                cfg.slot,
+                "scheduled-wake",
+                "POST",
+                &url,
+                status.as_u16(),
+                None,
+                elapsed,
+                flow_id.clone(),
+            ),
+        )
+        .await;
 
         if !status.is_success() {
             let msg = format!("wake HTTP error: {}", status);
-            self.log(cfg, file_logger::error_entry(cfg.slot, "scheduled-wake", "POST", &url, &msg)).await;
+            self.log(
+                cfg,
+                file_logger::error_entry_with_id(
+                    cfg.slot,
+                    "scheduled-wake",
+                    "POST",
+                    &url,
+                    &msg,
+                    flow_id,
+                ),
+            )
+            .await;
             return Err(msg);
         }
 
@@ -130,7 +248,20 @@ impl ApiClient {
 
     pub async fn fetch_quota(&self, cfg: &KeySlotConfig) -> Result<QuotaSnapshot, String> {
         debug!("slot {}: fetching quota from {}", cfg.slot, cfg.quota_url);
-        self.log(cfg, file_logger::request_entry(cfg.slot, "background-quota-poll", "GET", &cfg.quota_url, None)).await;
+        let flow_id = self.next_flow_id(cfg, "background-quota-poll");
+        self.log(
+            cfg,
+            file_logger::request_entry_with_id(
+                cfg.slot,
+                "background-quota-poll",
+                "GET",
+                &cfg.quota_url,
+                None,
+                flow_id.clone(),
+            ),
+        )
+        .await;
+        let start = Instant::now();
 
         let req = self
             .client
@@ -139,19 +270,42 @@ impl ApiClient {
             .header(ACCEPT_LANGUAGE, "en-US")
             .header(CONTENT_TYPE, "application/json");
 
-        let response = req
-            .send()
-            .await
-            .map_err(|err| {
+        let response = match req.send().await {
+            Ok(response) => response,
+            Err(err) => {
                 let msg = format!("quota request failed: {err}");
-                msg
-            })?;
+                self.log(
+                    cfg,
+                    file_logger::error_entry_with_id(
+                        cfg.slot,
+                        "background-quota-poll",
+                        "GET",
+                        &cfg.quota_url,
+                        &msg,
+                        flow_id,
+                    ),
+                )
+                .await;
+                return Err(msg);
+            }
+        };
 
         let status = response.status();
 
         if !status.is_success() {
             let msg = format!("quota HTTP error: {}", status);
-            self.log(cfg, file_logger::error_entry(cfg.slot, "background-quota-poll", "GET", &cfg.quota_url, &msg)).await;
+            self.log(
+                cfg,
+                file_logger::error_entry_with_id(
+                    cfg.slot,
+                    "background-quota-poll",
+                    "GET",
+                    &cfg.quota_url,
+                    &msg,
+                    flow_id,
+                ),
+            )
+            .await;
             return Err(msg);
         }
 
@@ -161,19 +315,95 @@ impl ApiClient {
             .map_err(|err| format!("failed to read quota response: {err}"))?;
 
         let resp_json: Option<serde_json::Value> = serde_json::from_str(&raw_text).ok();
-        self.log(cfg, file_logger::response_entry(cfg.slot, "background-quota-poll", "GET", &cfg.quota_url, status.as_u16(), resp_json)).await;
+        let elapsed = start.elapsed().as_millis() as u64;
+        self.log(
+            cfg,
+            file_logger::response_entry_with_timing_and_id(
+                cfg.slot,
+                "background-quota-poll",
+                "GET",
+                &cfg.quota_url,
+                status.as_u16(),
+                resp_json,
+                elapsed,
+                flow_id.clone(),
+            ),
+        )
+        .await;
 
-        let payload: QuotaApiResponse =
-            serde_json::from_str(&raw_text).map_err(|err| format!("invalid quota JSON response: {err}"))?;
+        let payload: QuotaApiResponse = match serde_json::from_str(&raw_text) {
+            Ok(payload) => payload,
+            Err(err) => {
+                let msg = format!("invalid quota JSON response: {err}");
+                self.log(
+                    cfg,
+                    file_logger::error_entry_with_id(
+                        cfg.slot,
+                        "background-quota-poll",
+                        "GET",
+                        &cfg.quota_url,
+                        &msg,
+                        flow_id,
+                    ),
+                )
+                .await;
+                return Err(msg);
+            }
+        };
 
         if payload.code != 200 {
-            return Err(format!("quota API code {}", payload.code));
+            let msg = format!("quota API code {}", payload.code);
+            self.log(
+                cfg,
+                file_logger::error_entry_with_id(
+                    cfg.slot,
+                    "background-quota-poll",
+                    "GET",
+                    &cfg.quota_url,
+                    &msg,
+                    flow_id.clone(),
+                ),
+            )
+            .await;
+            return Err(msg);
         }
 
-        let limits = payload
-            .data
-            .ok_or_else(|| "quota response missing data".to_string())?
-            .limits;
+        let limits = match payload.data {
+            Some(value) => value.limits,
+            None => {
+                let msg = "quota response missing data".to_string();
+                self.log(
+                    cfg,
+                    file_logger::error_entry_with_id(
+                        cfg.slot,
+                        "background-quota-poll",
+                        "GET",
+                        &cfg.quota_url,
+                        &msg,
+                        flow_id.clone(),
+                    ),
+                )
+                .await;
+                return Err(msg);
+            }
+        };
+
+        if limits.is_empty() {
+            let msg = "quota limits missing".to_string();
+            self.log(
+                cfg,
+                file_logger::error_entry_with_id(
+                    cfg.slot,
+                    "background-quota-poll",
+                    "GET",
+                    &cfg.quota_url,
+                    &msg,
+                    flow_id.clone(),
+                ),
+            )
+            .await;
+            return Err(msg);
+        }
 
         let selected = limits
             .iter()

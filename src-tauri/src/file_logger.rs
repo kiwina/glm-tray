@@ -1,12 +1,18 @@
 use chrono::{Local, NaiveDateTime, TimeZone};
 use log::info;
 use serde::Serialize;
+use serde_json::Value;
 use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
-/// Maximum number of days to keep log files (hardcoded)
-const MAX_LOG_DAYS: i64 = 7;
+/// Default number of days to keep log files.
+const DEFAULT_MAX_LOG_DAYS: i64 = 7;
+
+struct LoggerConfig {
+    dir: PathBuf,
+    max_days: i64,
+}
 
 /// A single JSONL log entry written to the daily log file.
 #[derive(Serialize)]
@@ -17,6 +23,10 @@ pub struct LogEntry {
     pub method: String,
     pub url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub flow_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub request_body: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<u16>,
@@ -24,32 +34,60 @@ pub struct LogEntry {
     pub response_body: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
-/// Returns the log directory inside `app_config_dir()/logs/`.
-fn log_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+/// Returns effective logger config using user overrides from config.
+async fn logger_config(app: &tauri::AppHandle) -> Result<LoggerConfig, String> {
     use tauri::Manager;
-    let mut base = app
+    let mut dir = app
         .path()
         .app_config_dir()
         .map_err(|e| format!("failed to resolve app config dir: {e}"))?;
-    base.push("logs");
-    Ok(base)
+    let mut max_days = DEFAULT_MAX_LOG_DAYS;
+
+    if let Some(state) = app.try_state::<crate::SharedState>() {
+        let cfg = state.config.read().await;
+        if let Some(path) = cfg.log_directory.as_ref() {
+            let trimmed = path.trim();
+            if !trimmed.is_empty() {
+                dir = PathBuf::from(trimmed);
+            }
+        }
+        if cfg.max_log_days > 0 {
+            max_days = cfg.max_log_days as i64;
+        }
+    }
+
+    if max_days <= 0 {
+        max_days = DEFAULT_MAX_LOG_DAYS;
+    }
+
+    dir.push("logs");
+    Ok(LoggerConfig { dir, max_days })
 }
 
-/// Deletes log files older than MAX_LOG_DAYS.
+/// Deletes log files older than configured retention.
 pub async fn cleanup_old_logs(app: &tauri::AppHandle) {
-    let dir = match log_dir(app) {
+    let config = match logger_config(app).await {
         Ok(d) => d,
         Err(_) => return,
     };
+    let dir = config.dir;
+    let max_days = config.max_days;
+    if max_days <= 0 {
+        return;
+    }
 
     let mut entries = match fs::read_dir(&dir).await {
         Ok(e) => e,
         Err(_) => return,
     };
 
-    let cutoff = Local::now() - chrono::Duration::days(MAX_LOG_DAYS);
+    let cutoff = Local::now() - chrono::Duration::days(max_days);
 
     while let Ok(Some(entry)) = entries.next_entry().await {
         let path = entry.path();
@@ -72,7 +110,8 @@ pub async fn cleanup_old_logs(app: &tauri::AppHandle) {
 
 /// Appends a `LogEntry` as one JSONL line to `logs/YYYY-MM-DD.jsonl`.
 pub async fn append(app: &tauri::AppHandle, entry: LogEntry) -> Result<(), String> {
-    let dir = log_dir(app)?;
+    let config = logger_config(app).await?;
+    let dir = config.dir;
     fs::create_dir_all(&dir)
         .await
         .map_err(|e| format!("create log dir: {e}"))?;
@@ -98,6 +137,37 @@ pub async fn append(app: &tauri::AppHandle, entry: LogEntry) -> Result<(), Strin
     Ok(())
 }
 
+fn request_entry_internal(
+    slot: usize,
+    action: &str,
+    method: &str,
+    url: &str,
+    request_body: Option<serde_json::Value>,
+    response_body: Option<serde_json::Value>,
+    status: Option<u16>,
+    error: Option<String>,
+    details: Option<Value>,
+    duration_ms: Option<u64>,
+    flow_id: Option<String>,
+    phase: Option<String>,
+) -> LogEntry {
+    LogEntry {
+        ts: Local::now().to_rfc3339(),
+        slot,
+        action: action.to_string(),
+        method: method.to_string(),
+        url: url.to_string(),
+        flow_id,
+        phase,
+        request_body,
+        status,
+        response_body,
+        error,
+        details,
+        duration_ms,
+    }
+}
+
 /// Convenience: build a LogEntry for a request.
 pub fn request_entry(
     slot: usize,
@@ -106,17 +176,32 @@ pub fn request_entry(
     url: &str,
     body: Option<serde_json::Value>,
 ) -> LogEntry {
-    LogEntry {
-        ts: Local::now().to_rfc3339(),
+    request_entry_internal(slot, action, method, url, body, None, None, None, None, None, None, Some("request".to_string()))
+}
+
+/// Convenience: build a LogEntry for a request with a flow id.
+pub fn request_entry_with_id(
+    slot: usize,
+    action: &str,
+    method: &str,
+    url: &str,
+    body: Option<serde_json::Value>,
+    flow_id: String,
+) -> LogEntry {
+    request_entry_internal(
         slot,
-        action: action.to_string(),
-        method: method.to_string(),
-        url: url.to_string(),
-        request_body: body,
-        status: None,
-        response_body: None,
-        error: None,
-    }
+        action,
+        method,
+        url,
+        body,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(flow_id),
+        Some("request".to_string()),
+    )
 }
 
 /// Convenience: build a LogEntry for a response.
@@ -128,17 +213,30 @@ pub fn response_entry(
     status: u16,
     body: Option<serde_json::Value>,
 ) -> LogEntry {
-    LogEntry {
-        ts: Local::now().to_rfc3339(),
+    response_entry_internal(slot, action, method, url, status, body, None, None)
+}
+
+/// Convenience: build a LogEntry for a response with timing metadata and flow id.
+pub fn response_entry_with_timing_and_id(
+    slot: usize,
+    action: &str,
+    method: &str,
+    url: &str,
+    status: u16,
+    body: Option<serde_json::Value>,
+    duration_ms: u64,
+    flow_id: String,
+) -> LogEntry {
+    response_entry_internal(
         slot,
-        action: action.to_string(),
-        method: method.to_string(),
-        url: url.to_string(),
-        request_body: None,
-        status: Some(status),
-        response_body: body,
-        error: None,
-    }
+        action,
+        method,
+        url,
+        status,
+        body,
+        Some(flow_id),
+        Some(duration_ms),
+    )
 }
 
 /// Convenience: build a LogEntry for an error.
@@ -149,15 +247,91 @@ pub fn error_entry(
     url: &str,
     error: &str,
 ) -> LogEntry {
-    LogEntry {
-        ts: Local::now().to_rfc3339(),
+    request_entry_internal(
         slot,
-        action: action.to_string(),
-        method: method.to_string(),
-        url: url.to_string(),
-        request_body: None,
-        status: None,
-        response_body: None,
-        error: Some(error.to_string()),
-    }
+        action,
+        method,
+        url,
+        None,
+        None,
+        None,
+        Some(error.to_string()),
+        None,
+        None,
+        None,
+        Some("error".to_string()),
+    )
+}
+
+/// Convenience: build a LogEntry for an error with details and flow id.
+pub fn error_entry_with_id(
+    slot: usize,
+    action: &str,
+    method: &str,
+    url: &str,
+    error: &str,
+    flow_id: String,
+) -> LogEntry {
+    request_entry_internal(
+        slot,
+        action,
+        method,
+        url,
+        None,
+        None,
+        None,
+        Some(error.to_string()),
+        None,
+        None,
+        Some(flow_id),
+        Some("error".to_string()),
+    )
+}
+
+/// Convenience: build a LogEntry for internal scheduler/runtime events.
+pub fn event_entry(
+    slot: usize,
+    action: &str,
+    details: Option<Value>,
+) -> LogEntry {
+    request_entry_internal(
+        slot,
+        action,
+        "INTERNAL",
+        "internal://glm-tray",
+        None,
+        None,
+        None,
+        None,
+        details,
+        None,
+        None,
+        Some("event".to_string()),
+    )
+}
+
+fn response_entry_internal(
+    slot: usize,
+    action: &str,
+    method: &str,
+    url: &str,
+    status: u16,
+    body: Option<serde_json::Value>,
+    flow_id: Option<String>,
+    duration_ms: Option<u64>,
+) -> LogEntry {
+    request_entry_internal(
+        slot,
+        action,
+        method,
+        url,
+        None,
+        body,
+        Some(status),
+        None,
+        None,
+        duration_ms,
+        flow_id,
+        Some("response".to_string()),
+    )
 }

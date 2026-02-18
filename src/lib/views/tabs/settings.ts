@@ -2,7 +2,7 @@ import type { AppConfig, Platform } from "../../types";
 import { PLATFORMS, detectPlatform } from "../../constants";
 import { currentView, configState, setConfigState, setCurrentView } from "../../state";
 import { esc, slotByView, defaultSlot, setHeaderActions, warmupButtonHtml, setupWarmupButton } from "../../helpers";
-import { backendInvoke } from "../../api";
+import { backendInvoke, syncMonitorButtons, refreshRuntimeStatus } from "../../api";
 import { render } from "../render";
 
 export function renderSettingsTab(tc: HTMLDivElement): void {
@@ -38,18 +38,18 @@ export function renderSettingsTab(tc: HTMLDivElement): void {
 
           <div class="flex flex-col gap-1">
             <label class="text-xs font-medium opacity-60">API Key</label>
-            <input id="api-key" type="password" class="input input-sm input-border w-full" value="${esc(s.api_key)}" placeholder="Bearer ..." autocomplete="off" />
+            <input id="api-key" type="password" class="input input-sm input-bordered w-full" value="${esc(s.api_key)}" placeholder="Bearer ..." autocomplete="off" />
           </div>
 
           <div class="flex flex-col gap-1">
             <label class="text-xs font-medium opacity-60">Name</label>
-            <input id="slot-name" type="text" class="input input-sm input-border w-full" value="${esc(s.name)}" placeholder="e.g. Production" />
+            <input id="slot-name" type="text" class="input input-sm input-bordered w-full" value="${esc(s.name)}" placeholder="e.g. Production" />
           </div>
 
           <div class="flex items-center justify-between gap-3">
             <div class="flex items-center gap-2 flex-1">
               <span class="text-sm font-medium">Poll every</span>
-              <input id="poll-interval" type="number" class="input input-sm input-border w-16" min="1" step="1" value="${s.poll_interval_minutes}" />
+              <input id="poll-interval" type="number" class="input input-sm input-bordered w-16" min="1" step="1" value="${s.poll_interval_minutes}" />
               <span class="text-xs opacity-40">min</span>
             </div>
             <input id="enabled" type="checkbox" class="toggle toggle-sm toggle-primary" ${s.enabled ? "checked" : ""} />
@@ -118,7 +118,17 @@ export function renderSettingsTab(tc: HTMLDivElement): void {
     n.enabled = (document.getElementById("enabled") as HTMLInputElement).checked;
     n.logging = (document.getElementById("logging") as HTMLInputElement).checked;
 
-    setConfigState(await backendInvoke<AppConfig>("save_settings", { settings: configState }));
+    try {
+      setConfigState(await backendInvoke<AppConfig>("save_settings", { settings: configState }));
+      await refreshRuntimeStatus();
+    } catch (err) {
+      console.warn("failed to save slot settings:", err);
+      syncMonitorButtons();
+      errEl.textContent = "Failed to save settings";
+      errEl.hidden = false;
+      return;
+    }
+    syncMonitorButtons();
 
     // Flash success toast
     const toast = document.getElementById("save-toast") as HTMLParagraphElement;
@@ -140,8 +150,21 @@ export function renderSettingsTab(tc: HTMLDivElement): void {
   document.getElementById("delete-slot-btn")?.addEventListener("click", async () => {
     const n = slotByView(currentView);
     const def = defaultSlot(n.slot);
+    if (configState?.global_quota_url) {
+      def.quota_url = configState.global_quota_url;
+    }
+    if (configState?.global_request_url) {
+      def.request_url = configState.global_request_url;
+    }
     Object.assign(n, def);
-    setConfigState(await backendInvoke<AppConfig>("save_settings", { settings: configState }));
+    try {
+      setConfigState(await backendInvoke<AppConfig>("save_settings", { settings: configState }));
+      await refreshRuntimeStatus();
+    } catch (err) {
+      console.warn("failed to reset slot settings:", err);
+      syncMonitorButtons();
+    }
+    syncMonitorButtons();
     setCurrentView("dashboard");
     render();
   });

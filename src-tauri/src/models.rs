@@ -3,6 +3,30 @@ use serde::{Deserialize, Serialize};
 pub const MAX_SLOTS: usize = 4;
 pub const CURRENT_CONFIG_VERSION: u32 = 3;
 
+fn default_global_quota_url() -> String {
+    "https://api.z.ai/api/monitor/usage/quota/limit".to_string()
+}
+
+fn default_global_request_url() -> String {
+    "https://api.z.ai/api/coding/paas/v4/chat/completions".to_string()
+}
+
+fn default_max_log_days() -> u64 {
+    7
+}
+
+fn default_wake_quota_retry_window_minutes() -> u64 {
+    15
+}
+
+fn default_max_consecutive_errors() -> u32 {
+    10
+}
+
+fn default_quota_poll_backoff_cap_minutes() -> u64 {
+    480
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct KeySlotConfig {
@@ -53,6 +77,20 @@ impl Default for KeySlotConfig {
 pub struct AppConfig {
     pub slots: Vec<KeySlotConfig>,
     pub theme: String,
+    #[serde(default = "default_global_quota_url")]
+    pub global_quota_url: String,
+    #[serde(default = "default_global_request_url")]
+    pub global_request_url: String,
+    #[serde(default)]
+    pub log_directory: Option<String>,
+    #[serde(default = "default_max_log_days")]
+    pub max_log_days: u64,
+    #[serde(default = "default_wake_quota_retry_window_minutes")]
+    pub wake_quota_retry_window_minutes: u64,
+    #[serde(default = "default_max_consecutive_errors")]
+    pub max_consecutive_errors: u32,
+    #[serde(default = "default_quota_poll_backoff_cap_minutes")]
+    pub quota_poll_backoff_cap_minutes: u64,
     #[serde(default)]
     pub config_version: u32,
 }
@@ -65,7 +103,18 @@ impl Default for AppConfig {
             slot.slot = idx + 1;
             slots.push(slot);
         }
-        Self { slots, theme: "glm".to_string(), config_version: CURRENT_CONFIG_VERSION }
+        Self {
+            slots,
+            theme: "glm".to_string(),
+            global_quota_url: default_global_quota_url(),
+            global_request_url: default_global_request_url(),
+            log_directory: None,
+            max_log_days: default_max_log_days(),
+            wake_quota_retry_window_minutes: default_wake_quota_retry_window_minutes(),
+            max_consecutive_errors: default_max_consecutive_errors(),
+            quota_poll_backoff_cap_minutes: default_quota_poll_backoff_cap_minutes(),
+            config_version: CURRENT_CONFIG_VERSION,
+        }
     }
 }
 
@@ -79,7 +128,12 @@ pub struct SlotRuntimeStatus {
     pub next_reset_hms: Option<String>,
     pub last_error: Option<String>,
     pub last_updated_epoch_ms: Option<i64>,
+    pub wake_consecutive_errors: u32,
+    pub quota_consecutive_errors: u32,
     pub consecutive_errors: u32,
+    pub wake_pending: bool,
+    pub wake_reset_epoch_ms: Option<i64>,
+    pub wake_auto_disabled: bool,
     pub auto_disabled: bool,
 }
 

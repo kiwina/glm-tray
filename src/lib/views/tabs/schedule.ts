@@ -1,6 +1,6 @@
 import { currentView, configState, scheduleSavedSnapshot, setScheduleSavedSnapshot, setConfigState } from "../../state";
 import { esc, slotByView, isValidHm, setHeaderActions, warmupButtonHtml, setupWarmupButton } from "../../helpers";
-import { backendInvoke } from "../../api";
+import { backendInvoke, syncMonitorButtons, refreshRuntimeStatus } from "../../api";
 import { render } from "../render";
 
 export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false): void {
@@ -37,7 +37,7 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
                 <path d="M3 3v5h5"/>
               </svg>
               <span class="text-sm font-medium">After reset + offset</span>
-              <input id="schedule-after-reset" type="number" class="input input-sm input-border w-20" min="1" max="1440" step="1" value="${s.schedule_after_reset_minutes}" />
+              <input id="schedule-after-reset" type="number" class="input input-sm input-bordered w-20" min="1" max="1440" step="1" value="${s.schedule_after_reset_minutes}" />
               <span class="text-xs opacity-40">min</span>
             </div>
             <input id="schedule-after-reset-enabled" type="checkbox" class="toggle toggle-sm toggle-primary" ${s.schedule_after_reset_enabled ? "checked" : ""} />
@@ -56,7 +56,7 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
                 <polyline points="12 6 12 12 16 14"/>
               </svg>
               <span class="text-sm font-medium">Every</span>
-              <input id="schedule-interval" type="number" class="input input-sm input-border w-20" min="1" max="1440" step="1" value="${s.schedule_interval_minutes}" />
+              <input id="schedule-interval" type="number" class="input input-sm input-bordered w-20" min="1" max="1440" step="1" value="${s.schedule_interval_minutes}" />
               <span class="text-xs opacity-40">min</span>
             </div>
             <input id="schedule-interval-enabled" type="checkbox" class="toggle toggle-sm toggle-primary" ${s.schedule_interval_enabled ? "checked" : ""} />
@@ -82,11 +82,11 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
           </div>
           <div class="pl-6">
             <div class="flex gap-1">
-              <input class="input input-sm input-border w-12 wake-time text-center !px-1" data-index="0" type="text" placeholder="--:--" value="${esc(times[0])}" />
-              <input class="input input-sm input-border w-12 wake-time text-center !px-1" data-index="1" type="text" placeholder="--:--" value="${esc(times[1])}" />
-              <input class="input input-sm input-border w-12 wake-time text-center !px-1" data-index="2" type="text" placeholder="--:--" value="${esc(times[2])}" />
-              <input class="input input-sm input-border w-12 wake-time text-center !px-1" data-index="3" type="text" placeholder="--:--" value="${esc(times[3])}" />
-              <input class="input input-sm input-border w-12 wake-time text-center !px-1" data-index="4" type="text" placeholder="--:--" value="${esc(times[4])}" />
+              <input class="input input-sm input-bordered w-12 wake-time text-center !px-1" data-index="0" type="text" placeholder="--:--" value="${esc(times[0])}" />
+              <input class="input input-sm input-bordered w-12 wake-time text-center !px-1" data-index="1" type="text" placeholder="--:--" value="${esc(times[1])}" />
+              <input class="input input-sm input-bordered w-12 wake-time text-center !px-1" data-index="2" type="text" placeholder="--:--" value="${esc(times[2])}" />
+              <input class="input input-sm input-bordered w-12 wake-time text-center !px-1" data-index="3" type="text" placeholder="--:--" value="${esc(times[3])}" />
+              <input class="input input-sm input-bordered w-12 wake-time text-center !px-1" data-index="4" type="text" placeholder="--:--" value="${esc(times[4])}" />
             </div>
             <p class="text-[10px] opacity-40 mt-1.5">Up to 5 times in 24h HH:MM format</p>
           </div>
@@ -190,7 +190,17 @@ export function renderScheduleTab(tc: HTMLDivElement, preserveSnapshot = false):
       }
       n.schedule_times = scheduleTimes;
 
-      setConfigState(await backendInvoke<typeof configState>("save_settings", { settings: configState }));
+      try {
+        setConfigState(await backendInvoke<typeof configState>("save_settings", { settings: configState }));
+        await refreshRuntimeStatus();
+      } catch (err) {
+        console.warn("failed to save schedule settings:", err);
+        syncMonitorButtons();
+        errEl.textContent = "Failed to save schedule settings";
+        errEl.hidden = false;
+        return;
+      }
+      syncMonitorButtons();
 
       // Flash success toast
       const toast = document.getElementById("schedule-toast") as HTMLParagraphElement;

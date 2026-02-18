@@ -48,6 +48,10 @@ struct SlotSchedule {
     last_times_marker: Option<String>,      // "YYYY-MM-DD HH:MM"
     last_reset_marker: Option<i64>,         // Last fired reset timestamp
     last_interval_fire: Instant,            // Last interval wake time
+
+    // Wake verification state
+    wake_retry_window_deadline: Option<Instant>, // Active window after wake send
+    wake_timeout_retry_fired: bool,              // Whether forced retry has already occurred
 }
 ```
 
@@ -106,7 +110,41 @@ if next_reset_epoch_ms.is_some() {
 
 **Deduplication**: Reset timestamp marker prevents double-firing
 
-**Initialization**: Requires quota poller to fetch `nextResetTime` first
+**Initialization**: Requires an observed `nextResetTime` in quota data to calculate the target.
+
+## Wake confirmation and retry behavior
+
+Wake is only confirmed when a successful quota read shows a valid `nextResetTime` state change.
+
+1. A wake request is sent when schedule is due or when wake needs confirmation.
+2. `wake_pending` is set and an immediate quota poll is triggered.
+3. While `wake_pending` is true, the poller confirms warm-up by checking `nextResetTime` is present and newer than the snapshot recorded before the wake.
+4. On confirmation success, `wake_pending` clears and wake-specific errors reset.
+5. On confirmation failure (while `wake_pending`), wake errors increment in two cases:
+   - `nextResetTime` is missing in quota response; or
+   - `nextResetTime` is present but does not advance beyond the snapshot taken before wake.
+6. If wake errors hit 10, wake is auto-disabled for that slot only.
+
+- **Flow**
+  - `wake send` -> `wake_pending = true` -> immediate quota poll
+  - **Success path**: `nextResetTime` present and advanced -> clear `wake_pending` -> reset wake errors
+  - **Failure path**: `nextResetTime` missing/unchanged -> increment wake errors -> keep `wake_pending`
+  - While `wake_pending` and within the configured wake-retry window: quota retries every minute
+  - After one window elapses: one forced wake retry, then return to normal schedule flow
+  - If wake errors reach the configured maximum: `wake_auto_disabled = true` for that slot
+
+During warm-up confirmation, the system uses a configurable quota retry window.
+One-time forced wake retry is executed after the window without successful confirmation.
+The slot remains in wake-retry mode for the configured window and fetches quota every minute.
+Once confirmed or forced retry is handled, normal poll interval resumes.
+This retry window is controlled by `wake_quota_retry_window_minutes` in global app settings.
+
+### Warm-up pre-check
+
+The scheduler uses quota state to avoid unnecessary wakes:
+
+- If `nextResetTime` is missing or in the past, wake may be required.
+- If quota poller call fails during this pre-check, wake is still attempted (fail-open) to avoid missing a keep-alive opportunity.
 
 ## Configuration Updates
 
@@ -166,16 +204,18 @@ Wake:  W-W-W-W-W-W-W-W-W-W-W-W-W-W-W-W-W-W-W-W-W-W-W-W-W-W   (every 1 min)
 
 ### Error Backoff
 
-Consecutive errors trigger exponential backoff:
+Consecutive quota errors trigger exponential backoff:
 
 ```
 Error 1:  poll_interval * 2^1 = 60 min
 Error 2:  poll_interval * 2^2 = 120 min
 Error 3:  poll_interval * 2^3 = 240 min
-Error 4+: poll_interval * 2^4 = 480 min (capped)
+Error 4+: poll_interval * 2^4, then capped by `quota_poll_backoff_cap_minutes`
+
+When wake confirmation is pending, quota fetches are retried every minute independently of the backoff.
 ```
 
-After 10 consecutive errors, slot is **auto-disabled**.
+After the configured `max_consecutive_errors` threshold, slot is **auto-disabled**.
 
 ### Immediate Initialization
 
@@ -190,7 +230,7 @@ client.send_wake_request(&cfg).await?;
 This ensures:
 1. API key is validated immediately
 2. `nextResetTime` is fetched quickly
-3. AfterReset mode can activate without delay
+3. Initial wake state is established when required
 
 ## API Priority
 
@@ -246,6 +286,16 @@ let selected = limits
 
 ## Logs and Debugging
 
+### JSONL schema
+
+Important log fields:
+
+- `action`: logical step (`scheduled-wake`, `background-quota-poll`, `quota-poller.wake-confirmed`, etc.)
+- `phase`: `request`, `response`, `error`, `event`
+- `flow_id`: shared identifier that links request and response/error lines for the same HTTP transaction
+- `duration_ms`: request latency for request/response pairs
+- `details`: structured event payload for internal scheduler moments
+
 ### Wake Scheduler Logs
 
 ```
@@ -260,7 +310,7 @@ INFO  slot 1 wake scheduler detected config change
 ```
 INFO  slot 1 quota poller started
 INFO  slot 1 quota refreshed (next_reset: Some(1772259238997))
-WARN  slot 1 poll failed (1/10 consecutive): connection timeout
+WARN  slot 1 poll failed (1/{max_consecutive_errors} consecutive): connection timeout
 INFO  slot 1 backing off: next poll in 60 min
 INFO  slot 1 recovered after 1 consecutive error(s)
 ```
@@ -269,10 +319,10 @@ INFO  slot 1 recovered after 1 consecutive error(s)
 
 | Issue | Cause | Solution |
 |-------|-------|----------|
-| AfterReset never fires | No `nextResetTime` fetched yet | Wait for first quota poll |
+| AfterReset never fires | TOKENS_LIMIT `nextResetTime` is missing | Wake is required to start/reset the timer |
 | Wake fires twice | Deduplication marker not updated | Check marker update logic |
 | Config changes ignored | `reload_if_running` not called | Call after config save |
-| Slot auto-disabled | 10 consecutive errors | Fix API/network issues |
+| Slot auto-disabled | `max_consecutive_errors` consecutive errors | Fix API/network issues |
 
 ## Performance Characteristics
 

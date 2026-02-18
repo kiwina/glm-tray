@@ -1,0 +1,187 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Oh-My-Claude-Sisyphus Configuration",
+  "type": "object",
+  "properties": {
+    "agents": {
+      "type": "object",
+      "description": "Agent model and feature configuration",
+      "properties": {
+        "sisyphus": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string",
+              "description": "Model ID for the main orchestrator"
+            }
+          }
+        },
+        "architect": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
+        "researcher": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string"
+            }
+          }
+        },
+        "explore": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string"
+            }
+          }
+        },
+        "frontendEngineer": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
+        "documentWriter": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
+        "multimodalLooker": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "features": {
+      "type": "object",
+      "description": "Feature toggles",
+      "properties": {
+        "parallelExecution": {
+          "type": "boolean",
+          "default": true
+        },
+        "lspTools": {
+          "type": "boolean",
+          "default": true
+        },
+        "astTools": {
+          "type": "boolean",
+          "default": true
+        },
+        "continuationEnforcement": {
+          "type": "boolean",
+          "default": true
+        },
+        "autoContextInjection": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "mcpServers": {
+      "type": "object",
+      "description": "MCP server configurations",
+      "properties": {
+        "exa": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "apiKey": {
+              "type": "string"
+            }
+          }
+        },
+        "context7": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "description": "Permission settings",
+      "properties": {
+        "allowBash": {
+          "type": "boolean",
+          "default": true
+        },
+        "allowEdit": {
+          "type": "boolean",
+          "default": true
+        },
+        "allowWrite": {
+          "type": "boolean",
+          "default": true
+        },
+        "maxBackgroundTasks": {
+          "type": "integer",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 20
+        }
+      }
+    },
+    "magicKeywords": {
+      "type": "object",
+      "description": "Magic keyword triggers",
+      "properties": {
+        "ultrawork": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "search": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "analyze": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ultrathink": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

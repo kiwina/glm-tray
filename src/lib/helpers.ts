@@ -1,5 +1,5 @@
 import type { KeySlotConfig, AppConfig, RuntimeStatus, View } from "./types";
-import { KEY_RANGE } from "./constants";
+import { KEY_RANGE, PLATFORMS } from "./constants";
 import { configState } from "./state";
 
 export function esc(s: string): string {
@@ -30,7 +30,17 @@ export function defaultSlot(slot: number): KeySlotConfig {
 }
 
 export function defaultConfig(): AppConfig {
-  return { slots: KEY_RANGE.map((s) => defaultSlot(s)), theme: "glm" };
+  return {
+    slots: KEY_RANGE.map((s) => defaultSlot(s)),
+    theme: "glm",
+    global_quota_url: PLATFORMS.zai.quota,
+    global_request_url: PLATFORMS.zai.request,
+    log_directory: "",
+    max_log_days: 7,
+    wake_quota_retry_window_minutes: 15,
+    max_consecutive_errors: 10,
+    quota_poll_backoff_cap_minutes: 480,
+  };
 }
 
 export function defaultRuntimeStatus(): RuntimeStatus {
@@ -44,14 +54,37 @@ export function defaultRuntimeStatus(): RuntimeStatus {
       percentage: null,
       next_reset_hms: null,
       last_error: null,
+      wake_consecutive_errors: 0,
+      quota_consecutive_errors: 0,
       last_updated_epoch_ms: null,
       consecutive_errors: 0,
+      wake_pending: false,
+      wake_reset_epoch_ms: null,
+      wake_auto_disabled: false,
       auto_disabled: false,
     })),
   };
 }
 
 export function normalizeConfig(config: AppConfig): AppConfig {
+  const global_quota_url = config.global_quota_url?.trim() || PLATFORMS.zai.quota;
+  const global_request_url =
+    config.global_request_url?.trim() || PLATFORMS.zai.request;
+  const validGlobalQuota = global_quota_url.startsWith("https://");
+  const validGlobalRequest = global_request_url.startsWith("https://");
+  const max_log_days = Number.isFinite(config.max_log_days)
+    ? Math.min(365, Math.max(1, Math.floor(config.max_log_days)))
+    : 7;
+  const wake_quota_retry_window_minutes = Number.isFinite(config.wake_quota_retry_window_minutes)
+    ? Math.min(1_440, Math.max(1, Math.floor(config.wake_quota_retry_window_minutes)))
+    : 15;
+  const max_consecutive_errors = Number.isFinite(config.max_consecutive_errors)
+    ? Math.min(1_000, Math.max(1, Math.floor(config.max_consecutive_errors)))
+    : 10;
+  const quota_poll_backoff_cap_minutes = Number.isFinite(config.quota_poll_backoff_cap_minutes)
+    ? Math.min(1_440, Math.max(1, Math.floor(config.quota_poll_backoff_cap_minutes)))
+    : 480;
+
   const slots = KEY_RANGE.map((index) => {
     const current =
       config.slots.find((s) => s.slot === index) ?? defaultSlot(index);
@@ -73,7 +106,17 @@ export function normalizeConfig(config: AppConfig): AppConfig {
       schedule_times: (current.schedule_times ?? []).slice(0, 5),
     };
   });
-  return { slots, theme: config.theme ?? "glm" };
+  return {
+    slots,
+    theme: config.theme ?? "glm",
+    global_quota_url: validGlobalQuota ? global_quota_url : PLATFORMS.zai.quota,
+    global_request_url: validGlobalRequest ? global_request_url : PLATFORMS.zai.request,
+    log_directory: (config.log_directory?.trim() || "") || undefined,
+    max_log_days,
+    wake_quota_retry_window_minutes,
+    max_consecutive_errors,
+    quota_poll_backoff_cap_minutes,
+  };
 }
 
 export function applyTheme(): void {
@@ -100,9 +143,23 @@ export function pctBarClass(pct: number): string {
 
 export function dotClass(
   slot: KeySlotConfig | undefined,
-  rt: { auto_disabled?: boolean; consecutive_errors?: number; enabled?: boolean } | undefined,
+  rt: {
+    auto_disabled?: boolean;
+    wake_auto_disabled?: boolean;
+    wake_pending?: boolean;
+    quota_consecutive_errors?: number;
+    wake_consecutive_errors?: number;
+    consecutive_errors?: number;
+    enabled?: boolean;
+  } | undefined,
 ): string {
-  if (rt?.auto_disabled || (rt?.consecutive_errors && rt.consecutive_errors > 0))
+  if (
+    rt?.auto_disabled ||
+    rt?.wake_auto_disabled ||
+    (rt?.consecutive_errors && rt.consecutive_errors > 0) ||
+    (rt?.quota_consecutive_errors && rt.quota_consecutive_errors > 0) ||
+    (rt?.wake_consecutive_errors && rt.wake_consecutive_errors > 0)
+  )
     return "bg-error";
   if (rt?.enabled || slot?.enabled) return "bg-success";
   return "bg-base-content/20";

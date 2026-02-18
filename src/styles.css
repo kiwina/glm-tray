@@ -147,9 +147,14 @@ body {
   transition: background-color 0ms, border-color 100ms, box-shadow 300ms;
 }
 
-/* Compact inputs in forms - smaller focus ring */
-#schedule-form input:focus,
-#settings-form input:focus {
+/* Compact inputs in forms - consistent smaller focus ring */
+#schedule-form .input:focus,
+#settings-form .input:focus,
+#global-settings-form .input:focus,
+#schedule-form .input:focus-visible,
+#settings-form .input:focus-visible,
+#global-settings-form .input:focus-visible {
   outline: none;
+  border-color: color-mix(in oklch, var(--color-primary) 80%, transparent);
   box-shadow: 0 0 0 1px var(--color-primary);
 }

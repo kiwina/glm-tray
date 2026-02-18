@@ -2,7 +2,7 @@ use log::{debug, info};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Wry};
 
 use crate::models::RuntimeStatus;
 
@@ -10,22 +10,35 @@ pub const TRAY_ID: &str = "quota_tray";
 const NORMAL_ICON_BYTES: &[u8] = include_bytes!("../icons/tray-normal.png");
 const ALERT_ICON_BYTES: &[u8] = include_bytes!("../icons/tray-alert.png");
 
-pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
+fn build_tray_menu(
+    app: &AppHandle,
+    has_ready_slot: bool,
+    monitoring: bool,
+) -> Result<Menu<Wry>, String> {
+    let start_enabled = has_ready_slot && !monitoring;
+    let stop_enabled = monitoring;
+    let warmup_enabled = has_ready_slot;
+
     let open = MenuItem::with_id(app, "open_settings", "Open Settings", true, None::<&str>)
         .map_err(|err| format!("failed to create Open Settings menu item: {err}"))?;
-    let start = MenuItem::with_id(app, "start_monitoring", "Start Monitoring", true, None::<&str>)
+    let start = MenuItem::with_id(app, "start_monitoring", "Start Monitoring", start_enabled, None::<&str>)
         .map_err(|err| format!("failed to create Start Monitoring menu item: {err}"))?;
-    let stop = MenuItem::with_id(app, "stop_monitoring", "Stop Monitoring", true, None::<&str>)
+    let stop = MenuItem::with_id(app, "stop_monitoring", "Stop Monitoring", stop_enabled, None::<&str>)
         .map_err(|err| format!("failed to create Stop Monitoring menu item: {err}"))?;
     let sep = PredefinedMenuItem::separator(app)
         .map_err(|err| format!("failed to create separator: {err}"))?;
-    let warmup = MenuItem::with_id(app, "warmup_all", "Warmup All Keys", true, None::<&str>)
+    let warmup = MenuItem::with_id(app, "warmup_all", "Warmup All Keys", warmup_enabled, None::<&str>)
         .map_err(|err| format!("failed to create Warmup All menu item: {err}"))?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)
         .map_err(|err| format!("failed to create Quit menu item: {err}"))?;
 
     let menu = Menu::with_items(app, &[&open, &start, &stop, &sep, &warmup, &quit])
         .map_err(|err| format!("failed to create tray menu: {err}"))?;
+    Ok(menu)
+}
+
+pub fn setup_tray(app: &AppHandle, has_ready_slot: bool) -> Result<(), String> {
+    let menu = build_tray_menu(app, has_ready_slot, false)?;
 
     let default_icon = app
         .default_window_icon()
@@ -102,10 +115,15 @@ pub fn show_or_focus_settings(app: &AppHandle) -> Result<(), String> {
     Err("settings window not found".to_string())
 }
 
-pub fn refresh_tray(app: &AppHandle, runtime: RuntimeStatus) -> Result<(), String> {
+pub fn refresh_tray(app: &AppHandle, runtime: RuntimeStatus, has_ready_slot: bool) -> Result<(), String> {
     let tray = app
         .tray_by_id(TRAY_ID)
         .ok_or_else(|| "tray icon not initialized".to_string())?;
+
+        let menu = build_tray_menu(app, has_ready_slot, runtime.monitoring)?;
+        tray
+            .set_menu(Some(menu))
+            .map_err(|err| format!("failed to set tray menu: {err}"))?;
 
     let enabled_slots: Vec<_> = runtime.slots.iter().filter(|s| s.enabled).collect();
 
@@ -119,6 +137,16 @@ pub fn refresh_tray(app: &AppHandle, runtime: RuntimeStatus) -> Result<(), Strin
 
         if slot.auto_disabled {
             lines.push(format!("{}: DISABLED (errors)", label));
+            continue;
+        }
+
+        if slot.wake_auto_disabled {
+            let wake_errors = slot.wake_consecutive_errors;
+            lines.push(format!(
+                "{}: WAKE PAUSED (wake errors x{})",
+                label,
+                wake_errors
+            ));
             continue;
         }
 
@@ -150,7 +178,7 @@ pub fn refresh_tray(app: &AppHandle, runtime: RuntimeStatus) -> Result<(), Strin
         .map_err(|err| format!("failed to set tray tooltip: {err}"))?;
 
     // Red icon when no keys are configured/enabled, or any slot auto-disabled
-    let any_auto_disabled = enabled_slots.iter().any(|s| s.auto_disabled);
+    let any_auto_disabled = enabled_slots.iter().any(|s| s.auto_disabled || s.wake_auto_disabled);
     let use_alert = (enabled_slots.is_empty() && !runtime.monitoring) || any_auto_disabled;
     let icon_bytes = if use_alert {
         ALERT_ICON_BYTES

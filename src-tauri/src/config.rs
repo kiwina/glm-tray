@@ -66,6 +66,13 @@ impl From<AppConfigV2> for AppConfig {
             slots: old.slots.into_iter().map(|s| s.into()).collect(),
             theme: old.theme,
             config_version: old.config_version,
+            global_quota_url: KeySlotConfig::default().quota_url,
+            global_request_url: KeySlotConfig::default().request_url.unwrap_or_default(),
+            log_directory: None,
+            max_log_days: 7,
+            wake_quota_retry_window_minutes: 15,
+            max_consecutive_errors: 10,
+            quota_poll_backoff_cap_minutes: 480,
         }
     }
 }
@@ -106,6 +113,42 @@ fn migrate(raw_json: &str) -> Result<AppConfig, String> {
 
 /// Clamp, trim, and sanitise every field so the rest of the app can trust it.
 fn validate(mut cfg: AppConfig) -> AppConfig {
+    let default_global_quota = cfg.global_quota_url.trim().to_string();
+    let default_global_request = cfg.global_request_url.trim().to_string();
+
+    if default_global_quota.is_empty() || !default_global_quota.starts_with("https://") {
+        warn!(
+            "config: invalid global_quota_url '{}', resetting to default",
+            cfg.global_quota_url
+        );
+        cfg.global_quota_url = KeySlotConfig::default().quota_url;
+    } else {
+        cfg.global_quota_url = default_global_quota;
+    }
+
+    if default_global_request.is_empty() || !default_global_request.starts_with("https://") {
+        warn!(
+            "config: invalid global_request_url '{}', resetting to default",
+            cfg.global_request_url
+        );
+        cfg.global_request_url = KeySlotConfig::default().request_url.unwrap_or_default();
+    } else {
+        cfg.global_request_url = default_global_request;
+    }
+
+    cfg.log_directory = cfg.log_directory.and_then(|path| {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    });
+    cfg.max_log_days = cfg.max_log_days.clamp(1, 365);
+    cfg.wake_quota_retry_window_minutes = cfg.wake_quota_retry_window_minutes.clamp(1, 1_440);
+    cfg.max_consecutive_errors = cfg.max_consecutive_errors.clamp(1, 1_000);
+    cfg.quota_poll_backoff_cap_minutes = cfg.quota_poll_backoff_cap_minutes.clamp(1, 1_440);
+
     // -- slot count --
     if cfg.slots.len() > MAX_SLOTS {
         warn!("config: truncating {} slots → {MAX_SLOTS}", cfg.slots.len());
@@ -114,8 +157,6 @@ fn validate(mut cfg: AppConfig) -> AppConfig {
     while cfg.slots.len() < MAX_SLOTS {
         cfg.slots.push(KeySlotConfig::default());
     }
-
-    let defaults = KeySlotConfig::default();
 
     for (idx, slot) in cfg.slots.iter_mut().enumerate() {
         slot.slot = idx + 1;
@@ -131,13 +172,15 @@ fn validate(mut cfg: AppConfig) -> AppConfig {
             if !slot.quota_url.trim().is_empty() {
                 warn!("slot {}: invalid quota_url '{}', resetting to default", slot.slot, slot.quota_url);
             }
-            slot.quota_url = defaults.quota_url.clone();
+            slot.quota_url = cfg.global_quota_url.clone();
         }
         if let Some(ref url) = slot.request_url {
             if !url.starts_with("https://") {
                 warn!("slot {}: invalid request_url '{}', resetting to default", slot.slot, url);
-                slot.request_url = defaults.request_url.clone();
+                slot.request_url = Some(cfg.global_request_url.clone());
             }
+        } else {
+            slot.request_url = Some(cfg.global_request_url.clone());
         }
 
         // -- interval bounds (min 1, max 1440 = 24 h) --

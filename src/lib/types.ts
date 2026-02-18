@@ -1,4 +1,4 @@
-export type View = "dashboard" | "1" | "2" | "3" | "4";
+export type View = "dashboard" | "settings" | "1" | "2" | "3" | "4";
 export type KeyTab = "stats" | "schedule" | "settings";
 export type Platform = "zai" | "bigmodel";
 
@@ -24,6 +24,13 @@ export interface KeySlotConfig {
 export interface AppConfig {
   slots: KeySlotConfig[];
   theme: string;
+  global_quota_url: string;
+  global_request_url: string;
+  log_directory?: string | null;
+  max_log_days: number;
+  wake_quota_retry_window_minutes: number;
+  max_consecutive_errors: number;
+  quota_poll_backoff_cap_minutes: number;
   config_version?: number;
 }
 
@@ -35,8 +42,13 @@ export interface SlotRuntimeStatus {
   percentage: number | null;
   next_reset_hms: string | null;
   last_error: string | null;
+  wake_consecutive_errors: number;
+  quota_consecutive_errors: number;
   last_updated_epoch_ms: number | null;
   consecutive_errors: number;
+  wake_pending: boolean;
+  wake_reset_epoch_ms: number | null;
+  wake_auto_disabled: boolean;
   auto_disabled: boolean;
 }
 
