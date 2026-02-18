@@ -6,15 +6,15 @@ import { render } from "./render";
 
 export function renderGlobalSettings(): void {
   const root = document.getElementById("content-area") as HTMLDivElement;
-  const titleEl = document.getElementById("page-title") as HTMLHeadingElement | null;
   const cfg = configState
     ? normalizeConfig(configState)
     : normalizeConfig(defaultConfig());
 
   clearHeaderActions();
 
+  const titleEl = document.getElementById("page-title") as HTMLHeadingElement | null;
   if (titleEl) {
-    titleEl.textContent = "Settings";
+    titleEl.closest("header")?.classList.add("hidden");
   }
 
   const enabledSlots = cfg.slots.filter((slot) => slot.enabled).length;
@@ -25,26 +25,25 @@ export function renderGlobalSettings(): void {
       <div class="overflow-y-auto p-4 main-content">
         <form id="global-settings-form" class="flex flex-col gap-4">
           <div class="card bg-base-100 card-border border-base-300 card-sm">
-            <div class="card-body p-4 gap-3">
-              <p class="text-xs font-semibold opacity-70">Application defaults</p>
-              <div class="form-control">
-                <label class="label py-1">
-                  <span class="label-text text-xs">Default quota URL</span>
-                </label>
-                <input id="global-quota-url" class="input input-sm input-bordered w-full" type="text" value="${cfg.global_quota_url}" />
+            <div class="card-body p-4 gap-2">
+              <p class="text-xs font-semibold opacity-70">Runtime behavior</p>
+              <div class="flex justify-between items-center">
+                <span class="text-xs">Wake confirmation window (minutes)</span>
+                <input id="global-wake-retry-window" class="input input-sm input-bordered w-20" type="number" min="1" max="1440" value="${cfg.wake_quota_retry_window_minutes}" />
               </div>
-              <div class="form-control">
-                <label class="label py-1">
-                  <span class="label-text text-xs">Default LLM URL</span>
-                </label>
-                <input id="global-request-url" class="input input-sm input-bordered w-full" type="text" value="${cfg.global_request_url}" />
+              <div class="flex justify-between items-center">
+                <span class="text-xs">Max consecutive errors</span>
+                <input id="global-max-consecutive-errors" class="input input-sm input-bordered w-20" type="number" min="1" max="1000" value="${cfg.max_consecutive_errors}" />
               </div>
-              <p class="text-[10px] opacity-40">These defaults are used for new slots and validation fallbacks.</p>
+              <div class="flex justify-between items-center">
+                <span class="text-xs">Quota backoff max (minutes)</span>
+                <input id="global-quota-backoff-cap" class="input input-sm input-bordered w-20" type="number" min="1" max="1440" value="${cfg.quota_poll_backoff_cap_minutes}" />
+              </div>
             </div>
           </div>
 
           <div class="card bg-base-100 card-border border-base-300 card-sm">
-            <div class="card-body p-4 gap-3">
+            <div class="card-body p-4 gap-2">
               <p class="text-xs font-semibold opacity-70">Logging</p>
               <div class="form-control">
                 <label class="label py-1">
@@ -55,29 +54,9 @@ export function renderGlobalSettings(): void {
                   <span class="label-text-alt text-[10px] opacity-50">Example: /tmp/glm-tray-logs</span>
                 </label>
               </div>
-              <div class="form-control">
-                <label class="label py-1">
-                  <span class="label-text text-xs">Keep log files (days)</span>
-                </label>
-                <input id="global-log-retention" class="input input-sm input-bordered w-24" type="number" min="1" max="365" value="${cfg.max_log_days}" />
-              </div>
-              <div class="form-control">
-                <label class="label py-1">
-                  <span class="label-text text-xs">Wake confirmation window (minutes)</span>
-                </label>
-                <input id="global-wake-retry-window" class="input input-sm input-bordered w-24" type="number" min="1" max="1440" value="${cfg.wake_quota_retry_window_minutes}" />
-              </div>
-              <div class="form-control">
-                <label class="label py-1">
-                  <span class="label-text text-xs">Max consecutive errors</span>
-                </label>
-                <input id="global-max-consecutive-errors" class="input input-sm input-bordered w-24" type="number" min="1" max="1000" value="${cfg.max_consecutive_errors}" />
-              </div>
-              <div class="form-control">
-                <label class="label py-1">
-                  <span class="label-text text-xs">Quota backoff max (minutes)</span>
-                </label>
-                <input id="global-quota-backoff-cap" class="input input-sm input-bordered w-24" type="number" min="1" max="1440" value="${cfg.quota_poll_backoff_cap_minutes}" />
+              <div class="flex justify-between items-center">
+                <span class="text-xs">Keep log files (days)</span>
+                <input id="global-log-retention" class="input input-sm input-bordered w-20" type="number" min="1" max="365" value="${cfg.max_log_days}" />
               </div>
             </div>
           </div>
@@ -93,6 +72,7 @@ export function renderGlobalSettings(): void {
                 <span class="font-semibold">${status}</span>
               </div>
               <div class="text-xs opacity-40">Version ${appVersion || "dev"}</div>
+              <div class="text-xs opacity-40">By Kiwina with <span class="text-error">❤</span> · <a href="https://z.ai/subscribe?ic=GONVESHW5A" class="link link-hover" target="_blank" rel="noopener">Subscribe to z.ai coding plan</a></div>
             </div>
           </div>
 
@@ -107,8 +87,6 @@ export function renderGlobalSettings(): void {
   const errEl = document.getElementById("global-form-error") as HTMLParagraphElement;
 
   const snapshot = {
-    global_quota_url: cfg.global_quota_url,
-    global_request_url: cfg.global_request_url,
     log_directory: cfg.log_directory,
     max_log_days: cfg.max_log_days,
     wake_quota_retry_window_minutes: cfg.wake_quota_retry_window_minutes,
@@ -117,24 +95,12 @@ export function renderGlobalSettings(): void {
   };
 
   function readForm(): AppConfig | null {
-    const quotaUrl = (document.getElementById("global-quota-url") as HTMLInputElement).value.trim();
-    const requestUrl = (document.getElementById("global-request-url") as HTMLInputElement).value.trim();
     const logDirectory = (document.getElementById("global-log-directory") as HTMLInputElement).value.trim();
     const days = Math.floor(Number((document.getElementById("global-log-retention") as HTMLInputElement).value) || cfg.max_log_days);
     const wakeRetryWindow = Math.floor(Number((document.getElementById("global-wake-retry-window") as HTMLInputElement).value) || cfg.wake_quota_retry_window_minutes);
     const maxConsecutiveErrors = Math.floor(Number((document.getElementById("global-max-consecutive-errors") as HTMLInputElement).value) || cfg.max_consecutive_errors);
     const quotaBackoffCap = Math.floor(Number((document.getElementById("global-quota-backoff-cap") as HTMLInputElement).value) || cfg.quota_poll_backoff_cap_minutes);
 
-    if (!quotaUrl || !quotaUrl.startsWith("https://")) {
-      errEl.textContent = "Default quota URL must start with https://";
-      errEl.hidden = false;
-      return null;
-    }
-    if (!requestUrl || !requestUrl.startsWith("https://")) {
-      errEl.textContent = "Default LLM URL must start with https://";
-      errEl.hidden = false;
-      return null;
-    }
     if (!Number.isFinite(days) || days < 1 || days > 365) {
       errEl.textContent = "Log retention must be between 1 and 365 days";
       errEl.hidden = false;
@@ -158,8 +124,6 @@ export function renderGlobalSettings(): void {
 
     const next = normalizeConfig({
       ...cfg,
-      global_quota_url: quotaUrl,
-      global_request_url: requestUrl,
       log_directory: logDirectory ? logDirectory : undefined,
       max_log_days: days,
       wake_quota_retry_window_minutes: wakeRetryWindow,
@@ -174,8 +138,6 @@ export function renderGlobalSettings(): void {
     const next = readForm();
     if (!next) return false;
     return (
-      next.global_quota_url !== snapshot.global_quota_url ||
-      next.global_request_url !== snapshot.global_request_url ||
       (next.log_directory ?? "") !== (snapshot.log_directory ?? "") ||
       next.max_log_days !== snapshot.max_log_days ||
       next.wake_quota_retry_window_minutes !== snapshot.wake_quota_retry_window_minutes ||
@@ -185,10 +147,7 @@ export function renderGlobalSettings(): void {
   }
 
   function checkDirty(): void {
-    const valid = Boolean((document.getElementById("global-quota-url") as HTMLInputElement).value.trim())
-      && Boolean((document.getElementById("global-request-url") as HTMLInputElement).value.trim())
-      && isDirty();
-    saveBtn.classList.toggle("hidden", !valid);
+    saveBtn.classList.toggle("hidden", !isDirty());
   }
 
   form.querySelectorAll("input").forEach((input) => {

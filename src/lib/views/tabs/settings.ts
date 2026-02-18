@@ -95,8 +95,18 @@ export function renderSettingsTab(tc: HTMLDivElement): void {
     saveBtn.classList.toggle("hidden", !isSettingsDirty());
   }
 
+  // Auto-enable toggle when API key is entered
+  const apiKeyInput = document.getElementById("api-key") as HTMLInputElement;
+  const enabledToggle = document.getElementById("enabled") as HTMLInputElement;
+
   form.querySelectorAll("input").forEach((el) => {
-    el.addEventListener("input", checkDirty);
+    el.addEventListener("input", () => {
+      // Auto-enable when API key is entered
+      if (el.id === "api-key" && apiKeyInput.value.trim().length > 0 && !enabledToggle.checked) {
+        enabledToggle.checked = true;
+      }
+      checkDirty();
+    });
     el.addEventListener("change", checkDirty);
   });
 

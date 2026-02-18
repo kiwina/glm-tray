@@ -10,6 +10,7 @@ export function renderKeyDetailShell(): void {
   const hasKey = s.api_key.trim().length > 0;
   const root = document.getElementById("content-area") as HTMLDivElement;
   const titleEl = document.getElementById("page-title") as HTMLHeadingElement;
+  titleEl.closest("header")?.classList.remove("hidden");
 
   // Set title based on current tab
   const tabTitles: Record<KeyTab, string> = {

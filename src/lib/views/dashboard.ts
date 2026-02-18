@@ -1,13 +1,14 @@
 import type { View } from "../types";
 import { MAX_KEYS } from "../constants";
-import { configState, latestRuntime, appVersion } from "../state";
-import { esc, defaultConfig, dotClass, pctBarClass } from "../helpers";
+import { configState, latestRuntime, appVersion, cachedStats } from "../state";
+import { esc, defaultConfig, dotClass, pctBarClass, formatTokens } from "../helpers";
 import { render } from "./render";
 
 export function renderDashboard(): void {
   const root = document.getElementById("content-area") as HTMLDivElement;
-  (document.getElementById("page-title") as HTMLHeadingElement).textContent =
-    "GLM Tray";
+  const titleEl = document.getElementById("page-title") as HTMLHeadingElement;
+  titleEl.textContent = "GLM Tray";
+  titleEl.closest("header")?.classList.remove("hidden");
 
   const rt = latestRuntime ?? { monitoring: false, slots: [] };
   const config = configState ?? defaultConfig();
@@ -75,6 +76,32 @@ export function renderDashboard(): void {
         <span class="w-2 h-2 rounded-full shrink-0 ${dc}"></span>
         <span class="text-sm font-semibold whitespace-nowrap min-w-[60px]">${esc(name)}</span>
         <div class="flex items-center gap-2 ml-auto shrink-0">${rightSide}</div>
+      </div>`;
+
+    // Demo stats boxes below each key
+    const stats = cachedStats[slot.slot];
+    const pct = rtSlot?.percentage ?? 0;
+    const reset = rtSlot?.next_reset_hms ?? "--:--:--";
+    const calls = stats?.total_model_calls_5h ?? 0;
+    const tokens = stats?.total_tokens_5h ?? 0;
+
+    html += `
+      <div class="border-t-base-content/5 border-t border-dashed px-1 pb-2">
+        <div class="stats bg-base-100 w-full overflow-hidden shadow-sm border border-base-300 rounded-lg">
+          <div class="stat py-2 px-3 flex flex-col items-center justify-center">
+            <div class="stat-title text-[9px] text-center opacity-50">Used</div>
+            <div class="stat-value text-base text-center">${pct}%</div>
+          </div>
+          <div class="stat py-2 px-3 flex flex-col items-center justify-center">
+            <div class="stat-title text-[9px] text-center opacity-50">Requests</div>
+            <div class="stat-value text-base text-center">${calls.toLocaleString()}</div>
+          </div>
+          <div class="stat py-2 px-3 flex flex-col items-center justify-center">
+            <div class="stat-title text-[9px] text-center opacity-50">Tokens</div>
+            <div class="stat-value text-base text-center">${formatTokens(tokens)}</div>
+          </div>
+        </div>
+        <div class="text-[9px] opacity-40 text-center mt-1">Resets in ${reset}</div>
       </div>`;
   }
 
