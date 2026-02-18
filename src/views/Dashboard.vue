@@ -12,58 +12,52 @@
       </div>
     </div>
 
-    <!-- Key Cards -->
-    <div v-for="s in visibleSlots" :key="s.slot" 
-         class="card bg-base-100 shadow-sm border border-neutral hover:border-primary/50 transition-colors cursor-pointer group mb-3"
-         @click="goKey(s.slot)">
-      <div class="card-body p-4">
-          <!-- Header -->
-          <div class="flex justify-between items-center mb-2">
-               <h2 class="card-title text-sm font-bold flex items-center gap-2">
-                   <span class="w-2 h-2 rounded-full" :class="getDotClass(s, getRuntime(s.slot))"></span>
-                   {{ s.name || `Key ${s.slot}` }}
-               </h2>
-               <div v-if="getRuntime(s.slot)?.auto_disabled" class="badge badge-sm badge-soft badge-error">DISABLED</div>
-               <div v-else-if="getRuntime(s.slot)?.wake_auto_disabled" class="badge badge-sm badge-soft badge-warning">WAKE PAUSED</div>
-               <div v-else-if="getRuntime(s.slot)?.percentage != null">
-                   <div class="flex items-center gap-1.5">
-                       <span class="text-xs font-bold">{{ getRuntime(s.slot)?.percentage }}%</span>
-                   </div>
-               </div>
-               <div v-else class="text-xs opacity-30">waiting…</div>
-          </div>
-
-          <!-- Progress -->
-          <div v-if="getRuntime(s.slot)?.percentage != null" class="flex items-center gap-3 mb-3">
-              <progress class="progress w-full" 
-                        :class="pctBarClass(getRuntime(s.slot)?.percentage || 0)" 
-                        :value="getRuntime(s.slot)?.percentage || 0" 
-                        max="100"></progress>
-          </div>
-
-          <!-- Stats Grid -->
-          <div class="grid grid-cols-2 gap-px bg-base-300 rounded-lg overflow-hidden border border-base-300">
-              <div class="bg-base-100 py-2 px-3 flex flex-col items-center justify-center">
-                <div class="text-[9px] text-center opacity-50">Used</div>
-                <div class="text-base font-mono text-center">{{ getRuntime(s.slot)?.percentage || 0 }}%</div>
-              </div>
-              <div class="bg-base-100 py-2 px-3 flex flex-col items-center justify-center">
-                <div class="text-[9px] text-center opacity-50">Requests</div>
-                <div class="text-base font-mono text-center">{{ (getRuntime(s.slot)?.total_model_calls_5h || 0).toLocaleString() }}</div>
-              </div>
-          </div>
+    <!-- Key List (No Card Wrapper) -->
+    <div v-for="s in visibleSlots" :key="s.slot">
+       <div class="border-t-base-content/5 flex items-center gap-2.5 border-t border-dashed py-2.5 px-1 cursor-pointer hover:bg-base-content/[.03] transition"
+            @click="goKey(s.slot)">
+          <span class="w-2 h-2 rounded-full shrink-0" :class="getDotClass(s, getRuntime(s.slot))"></span>
+          <span class="text-sm font-semibold whitespace-nowrap min-w-[60px]">{{ s.name || `Key ${s.slot}` }}</span>
           
-          <!-- Footer -->
-          <div class="text-[9px] opacity-40 text-center mt-1">
-              Resets in {{ getRuntime(s.slot)?.next_reset_hms || '--:--:--' }} 
-              · {{ formatUpdated(getRuntime(s.slot)?.quota_last_updated) }}
+          <div class="flex items-center gap-2 ml-auto shrink-0">
+             <div v-if="getRuntime(s.slot)?.auto_disabled" class="badge badge-sm badge-soft badge-error">DISABLED</div>
+             <div v-else-if="getRuntime(s.slot)?.wake_auto_disabled" class="badge badge-sm badge-soft badge-warning">WAKE PAUSED</div>
+             <div v-else-if="getRuntime(s.slot)?.percentage != null" class="flex items-center gap-2">
+                 <progress class="progress w-14" 
+                           :class="pctBarClass(getRuntime(s.slot)?.percentage || 0)" 
+                           :value="getRuntime(s.slot)?.percentage || 0" 
+                           max="100"></progress>
+                 <span class="text-sm font-bold tabular-nums min-w-8 text-right">{{ getRuntime(s.slot)?.percentage }}%</span>
+                 <span class="text-[10px] opacity-40 tabular-nums">{{ getRuntime(s.slot)?.next_reset_hms || '--:--:--' }}</span>
+                 <span v-if="(getRuntime(s.slot)?.quota_consecutive_errors || 0) > 0" class="badge badge-error badge-xs">quota ×{{ getRuntime(s.slot)?.quota_consecutive_errors }}</span>
+                 <span v-if="(getRuntime(s.slot)?.wake_consecutive_errors || 0) > 0" class="badge badge-warning badge-xs">wake ×{{ getRuntime(s.slot)?.wake_consecutive_errors }}</span>
+             </div>
+             <div v-else class="text-xs opacity-30">waiting…</div>
           </div>
-      </div>
+       </div>
+
+       <div class="border-t-base-content/5 border-t border-dashed px-1 pb-2">
+         <div class="stats bg-base-100 w-full overflow-hidden shadow-sm border border-base-300 rounded-lg">
+           <div class="stat py-2 px-3 flex flex-col items-center justify-center">
+             <div class="stat-title text-[9px] text-center opacity-50">Used</div>
+             <div class="stat-value text-base text-center">{{ getRuntime(s.slot)?.percentage || 0 }}%</div>
+           </div>
+           <div class="stat py-2 px-3 flex flex-col items-center justify-center">
+              <div class="stat-title text-[9px] text-center opacity-50">Requests</div>
+              <div class="stat-value text-base text-center">{{ (getRuntime(s.slot)?.total_model_calls_5h || 0).toLocaleString() }}</div>
+           </div>
+           <div class="stat py-2 px-3 flex flex-col items-center justify-center">
+              <div class="stat-title text-[9px] text-center opacity-50">Tokens</div>
+              <div class="stat-value text-base text-center">{{ formatTokens(getRuntime(s.slot)?.total_tokens_5h || 0) }}</div>
+           </div>
+         </div>
+         <div class="text-[9px] opacity-40 text-center mt-1">Resets in {{ getRuntime(s.slot)?.next_reset_hms || '--:--:--' }} · {{ formatUpdated(getRuntime(s.slot)?.quota_last_updated) }}</div>
+       </div>
     </div>
 
     <!-- Add Key -->
     <div v-if="nextFreeSlot" 
-         class="border-t-base-content/5 flex items-center justify-center gap-2 border-t border-dashed py-2.5 px-1 cursor-pointer opacity-30 hover:opacity-70 hover:text-primary transition mt-4"
+         class="border-t-base-content/5 flex items-center justify-center gap-2 border-t border-dashed py-2.5 px-1 cursor-pointer opacity-30 hover:opacity-70 hover:text-primary transition"
          @click="goKey(nextFreeSlot.slot)">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <line x1="12" y1="5" x2="12" y2="19"/>
@@ -82,7 +76,7 @@ import { useRouter } from 'vue-router';
 import { useSettingsStore } from '../stores/settings';
 import { useKeysStore } from '../stores/keys';
 import { useAppStore } from '../stores/app';
-import { getDotClass, pctBarClass } from '../lib/ui-helpers';
+import { getDotClass, pctBarClass, formatTokens } from '../lib/ui-helpers';
 
 const router = useRouter();
 const settingsStore = useSettingsStore();

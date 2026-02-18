@@ -14,7 +14,7 @@
       <router-link v-for="s in visibleSlots" :key="s.slot" :to="`/key/${s.slot}`" 
                    class="nav-btn relative flex flex-col items-center justify-center gap-1 w-full aspect-square border-none bg-transparent text-base-content/60 cursor-pointer hover:bg-base-content/[.04] hover:text-base-content transition rounded-none"
                    active-class="active">
-          <span class="relative w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border border-base-content/20 transition-colors">
+          <span class="relative w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border border-neutral transition-colors nav-num">
             {{ s.slot }}
             <span class="absolute -top-0.5 -right-0.5 w-[7px] h-[7px] rounded-full border-[1.5px] border-base-200" :class="getDotClass(s, getRuntime(s.slot))"></span>
           </span>
@@ -101,8 +101,11 @@ async function warmupAll() {
 .nav-btn.active {
     color: var(--color-primary);
     background-color: color-mix(in oklab, var(--color-primary) 10%, transparent);
-    box-shadow: inset -2px 0 0 calc(2px + 1px) var(--color-primary); 
-    /* DaisyUI 5 logic or manual border */
-    border-right: 2px solid var(--color-primary);
+    box-shadow: inset -2px 0 0 0 var(--color-primary); 
+}
+
+.nav-btn.active .nav-num {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
 }
 </style>
