@@ -53,6 +53,7 @@ fn has_enabled_slot(cfg: &AppConfig) -> bool {
 #[derive(Debug, Clone)]
 struct SlotSchedule {
     next_reset_epoch_ms: Option<i64>,
+    last_known_reset_epoch_ms: Option<i64>,
     last_times_marker: Option<String>,
     last_reset_marker: Option<i64>,
     last_interval_fire: Instant,
@@ -64,6 +65,7 @@ impl Default for SlotSchedule {
     fn default() -> Self {
         Self {
             next_reset_epoch_ms: None,
+            last_known_reset_epoch_ms: None,
             last_times_marker: None,
             last_reset_marker: None,
             last_interval_fire: Instant::now(),
@@ -1014,6 +1016,9 @@ impl SchedulerManager {
                     {
                         let mut sched = schedule.write().await;
                         sched.next_reset_epoch_ms = snapshot.next_reset_epoch_ms;
+                        if let Some(reset_ms) = snapshot.next_reset_epoch_ms {
+                            sched.last_known_reset_epoch_ms = Some(reset_ms);
+                        }
                     }
 
                     // Fetch 5h model-usage alongside quota
@@ -1181,7 +1186,7 @@ fn should_fire_wake(
 
     // Check after-reset mode
     if slot_cfg.schedule_after_reset_enabled {
-        if let Some(next_reset) = schedule.next_reset_epoch_ms {
+        if let Some(next_reset) = schedule.last_known_reset_epoch_ms {
             let target = next_reset + (slot_cfg.schedule_after_reset_minutes.max(1) as i64 * 60_000);
             let now_ms = Local::now().timestamp_millis();
 
@@ -1220,7 +1225,7 @@ fn update_schedule_markers(
 
     // Update after-reset marker if enabled
     if slot_cfg.schedule_after_reset_enabled {
-        if let Some(next_reset) = old_schedule.next_reset_epoch_ms {
+        if let Some(next_reset) = old_schedule.last_known_reset_epoch_ms {
             let target = next_reset + (slot_cfg.schedule_after_reset_minutes.max(1) as i64 * 60_000);
             let now_ms = Local::now().timestamp_millis();
             if now_ms >= target {

@@ -20,7 +20,7 @@ const url = require('url');
 function parseArgs() {
   const args = {
     port: parseInt(process.env.MOCK_PORT || '3456', 10),
-    expiryMinutes: parseFloat(process.env.MOCK_EXPIRY || '10'),  // Default 10 minutes after wake
+    expiryMinutes: parseFloat(process.env.MOCK_EXPIRY || '3'),  // Default 10 minutes after wake
   };
 
   for (const arg of process.argv.slice(2)) {

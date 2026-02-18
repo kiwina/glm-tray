@@ -94,12 +94,42 @@ async fn warmup_slot(app: tauri::AppHandle, state: tauri::State<'_, SharedState>
         return Err("slot is disabled or has no API key".into());
     }
 
-    let client = api_client::ApiClient::new(Some(app), config.debug, config.mock_url.clone())?;
+    let client = api_client::ApiClient::new(Some(app.clone()), config.debug, config.mock_url.clone())?;
     if is_slot_quota_full_realtime(&client, &state.runtime_status, slot_cfg).await {
         return Err("slot reset window is still active".into());
     }
     client.warmup_key(slot_cfg).await?;
     info!("warmup slot {} succeeded", slot);
+
+    // Fetch fresh stats immediately for instant UI feedback
+    if let Ok(snapshot) = client.fetch_quota(slot_cfg, "warmup-postcheck").await {
+        let (model_calls, tokens) = client.fetch_model_usage_5h(slot_cfg, snapshot.next_reset_epoch_ms).await;
+        let now_iso = chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
+        
+        {
+            let mut runtime = state.runtime_status.write().await;
+            if let Some(current) = runtime.slots.get_mut(slot.saturating_sub(1)) {
+                current.timer_active = snapshot.timer_active;
+                current.percentage = Some(snapshot.percentage);
+                current.next_reset_hms = snapshot.next_reset_hms.clone();
+                current.last_updated_epoch_ms = snapshot.next_reset_epoch_ms;
+                current.total_model_calls_5h = model_calls;
+                current.total_tokens_5h = tokens;
+                current.quota_last_updated = Some(now_iso.clone());
+            }
+        }
+
+        let _ = app.emit("quota-updated", serde_json::json!({
+            "slot": slot,
+            "timer_active": snapshot.timer_active,
+            "percentage": snapshot.percentage,
+            "next_reset_hms": snapshot.next_reset_hms,
+            "total_model_calls_5h": model_calls,
+            "total_tokens_5h": tokens,
+            "quota_last_updated": now_iso
+        }));
+    }
+
     Ok(())
 }
 

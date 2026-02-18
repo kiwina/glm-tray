@@ -5,7 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import type { AppConfig, QuotaUpdateEvent } from "./lib/types";
 import { isTauriRuntime } from "./lib/constants";
-import { setConfigState, setAppVersion, currentView, currentKeyTab, cachedStats, latestRuntime } from "./lib/state";
+import { setConfigState, setAppVersion, currentView, currentKeyTab, cachedStats, latestRuntime, deleteCachedStats } from "./lib/state";
 import { applyTheme } from "./lib/helpers";
 import { backendInvoke, refreshRuntimeStatus, hasEnabledSlotWithKey, syncMonitorButtons, logUiAction } from "./lib/api";
 import { createSidebar } from "./lib/sidebar";
@@ -148,8 +148,17 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
     ).catch((err) => console.warn("Failed to listen for quota-updated:", err));
 
-    listen<boolean>("monitoring-changed", (_event) => {
-      void refreshRuntimeStatus().then(syncWarmupButton);
+    listen<boolean>("monitoring-changed", (event) => {
+      const monitoring = event.payload;
+      if (!monitoring) {
+        Object.keys(cachedStats).forEach(key => deleteCachedStats(Number(key)));
+      }
+      void refreshRuntimeStatus().then(() => {
+        syncWarmupButton();
+        if (currentView !== "dashboard") {
+          render(currentView);
+        }
+      });
     }).catch((err) => console.warn("Failed to listen for monitoring changes:", err));
   }
 
