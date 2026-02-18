@@ -2,41 +2,50 @@
   <aside class="w-[76px] bg-base-200 border-r border-neutral flex flex-col shrink-0 z-20 relative h-full">
     <div class="flex-1 flex flex-col items-center w-full gap-1 overflow-y-auto no-scrollbar py-2">
       <!-- Home -->
-      <router-link to="/dashboard" class="nav-btn relative flex flex-col items-center justify-center gap-1 w-full aspect-square border-none bg-transparent text-base-content/60 cursor-pointer hover:bg-base-content/[.04] hover:text-base-content transition rounded-none" active-class="active">
-        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+      <router-link to="/dashboard" class="nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent text-base-content/60 cursor-pointer hover:text-base-content hover:bg-base-content/[.04] transition" active-class="active">
+        <svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1"/>
+          <rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/>
+          <rect x="14" y="14" width="7" height="7" rx="1"/>
         </svg>
         <span class="text-[10px] font-medium tracking-wide">Home</span>
       </router-link>
 
       <!-- Dynamic Keys -->
-      <router-link v-for="s in visibleSlots" :key="s.slot" :to="`/key/${s.slot}`" 
-                   class="nav-btn relative flex flex-col items-center justify-center gap-1 w-full aspect-square border-none bg-transparent text-base-content/60 cursor-pointer hover:bg-base-content/[.04] hover:text-base-content transition rounded-none"
+      <router-link v-for="s in visibleSlots" :key="s.slot" :to="`/key/${s.slot}`"
+                   class="nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent text-base-content/60 cursor-pointer hover:text-base-content hover:bg-base-content/[.04] transition"
                    active-class="active">
-          <span class="relative w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border border-neutral transition-colors nav-num">
+          <span class="nav-num relative w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border border-neutral transition-colors">
             {{ s.slot }}
-            <span class="absolute -top-0.5 -right-0.5 w-[7px] h-[7px] rounded-full border-[1.5px] border-base-200" :class="getDotClass(s, getRuntime(s.slot))"></span>
+            <span class="absolute -top-0.5 -right-0.5 w-[7px] h-[7px] rounded-full border-[1.5px] border-base-200" :class="dotClass(s, getRuntime(s.slot))"></span>
           </span>
-          <span class="text-[10px] font-medium tracking-wide max-w-[68px] text-center truncate px-1">{{ shortName(s.name) || `Key ${s.slot}` }}</span>
+          <span class="text-[10px] font-medium tracking-wide max-w-[68px] text-center truncate">{{ shortName(s) }}</span>
       </router-link>
     </div>
 
     <!-- Controls -->
     <div class="border-t border-neutral py-2 flex flex-col w-full px-0 gap-1">
-        <button class="nav-btn relative flex flex-col items-center justify-center gap-1 py-1 w-full border-none bg-transparent cursor-pointer transition"
+        <!-- Monitor button -->
+        <button id="monitor-btn"
+                class="nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent cursor-pointer transition"
                 :class="monitorBtnClass"
-                :disabled="!hasKeys"
+                :disabled="monitorBtnDisabled"
+                :title="monitorBtnTitle"
                 @click="toggleMonitoring">
-            <svg v-if="keysStore.runtime?.monitoring" class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            <svg v-if="keysStore.runtime.monitoring" class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
             <svg v-else class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-            <span class="text-[10px] font-medium tracking-wide">{{ keysStore.runtime?.monitoring ? 'Stop' : 'Start' }}</span>
+            <span class="text-[10px] font-medium tracking-wide">{{ keysStore.runtime.monitoring ? 'Stop' : 'Start' }}</span>
         </button>
 
-        <button class="nav-btn relative flex flex-col items-center justify-center gap-1 py-1 w-full border-none bg-transparent text-base-content/60 cursor-pointer hover:text-base-content hover:bg-base-content/[.04] transition"
+        <!-- Warmup button -->
+        <button id="warmup-btn"
+                class="nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent text-base-content/60 cursor-pointer hover:text-base-content hover:bg-base-content/[.04] transition"
+                :class="{ 'warming-up': warmingUp }"
                 :disabled="!hasKeys"
-                title="Warmup all keys"
-                @click="warmupAll">
+                :title="hasKeys ? 'Wake keys that are not ready' : 'Add an API key first'"
+                @click="doWarmupAll">
             <svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
             </svg>
@@ -46,7 +55,7 @@
 
     <!-- Logo -->
     <div class="border-t border-neutral py-2 w-full">
-        <a href="https://z.ai/subscribe?ic=GONVESHW5A" target="_blank" class="block mt-1 mb-1 text-center opacity-50 hover:opacity-90 transition-opacity">
+        <a href="https://z.ai/subscribe?ic=GONVESHW5A" @click.prevent="openLogoLink" class="sidebar-logo-link block mt-1 mb-1 text-center opacity-50 hover:opacity-90 transition-opacity">
             <img src="../assets/logo-white.svg" alt="logo" class="w-8 h-8 mx-auto" />
         </a>
     </div>
@@ -54,58 +63,84 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useSettingsStore } from '../stores/settings';
 import { useKeysStore } from '../stores/keys';
-import { getDotClass } from '../lib/ui-helpers';
+import { dotClass } from '../lib/ui-helpers';
+import { hasSlotWithKey } from '../lib/api';
+import { isTauriRuntime } from '../lib/constants';
+import type { KeySlotConfig } from '../lib/types';
 
 const settingsStore = useSettingsStore();
 const keysStore = useKeysStore();
+const warmingUp = ref(false);
 
 const visibleSlots = computed(() => {
     return settingsStore.config?.slots.filter(s => s.enabled || s.api_key || s.name) || [];
 });
 
-const hasKeys = computed(() => visibleSlots.value.length > 0);
+const hasKeys = computed(() => hasSlotWithKey(settingsStore.config));
 
 function getRuntime(slot: number) {
     return keysStore.runtime.slots.find(s => s.slot === slot);
 }
 
-const monitorBtnClass = computed(() => {
-    if (keysStore.runtime.monitoring) return 'text-error hover:bg-error/10';
-    if (!hasKeys.value) return 'text-base-content/30 opacity-50 cursor-not-allowed';
-    return 'text-base-content/60 hover:text-base-content hover:bg-base-content/[.04]';
-});
-
-function shortName(name: string | undefined) {
-    if (!name) return '';
+function shortName(slot: KeySlotConfig) {
+    const name = slot.name || `Key ${slot.slot}`;
     return name.length > 8 ? name.slice(0, 7) + '…' : name;
 }
 
-// Actions
-async function toggleMonitoring() {
+const monitorBtnClass = computed(() => {
     if (keysStore.runtime.monitoring) {
-        await keysStore.stopMonitoring();
-    } else {
-        await keysStore.startMonitoring();
+        return 'text-error hover:bg-error/10';
+    }
+    if (!hasKeys.value) {
+        return 'text-base-content/30 cursor-not-allowed opacity-40';
+    }
+    return 'text-base-content/60 hover:text-base-content hover:bg-base-content/[.04]';
+});
+
+const monitorBtnDisabled = computed(() => {
+    if (keysStore.runtime.monitoring) return false;
+    return !hasKeys.value;
+});
+
+const monitorBtnTitle = computed(() => {
+    if (keysStore.runtime.monitoring) return 'Stop monitoring';
+    return hasKeys.value ? 'Start monitoring all keys' : 'Add an API key first';
+});
+
+async function toggleMonitoring() {
+    if (!hasKeys.value && !keysStore.runtime.monitoring) return;
+    try {
+        if (keysStore.runtime.monitoring) {
+            await keysStore.stopMonitoring();
+        } else {
+            await keysStore.startMonitoring();
+        }
+    } catch (err) {
+        console.warn('monitoring command failed:', err);
+        await keysStore.fetchRuntime().catch(() => {});
     }
 }
 
-async function warmupAll() {
-    await keysStore.warmupAll();
+async function doWarmupAll() {
+    if (!hasKeys.value) return;
+    warmingUp.value = true;
+    try {
+        await keysStore.warmupAll();
+    } finally {
+        warmingUp.value = false;
+    }
+}
+
+async function openLogoLink() {
+    const url = 'https://z.ai/subscribe?ic=GONVESHW5A';
+    if (isTauriRuntime) {
+        const { openUrl } = await import('@tauri-apps/plugin-opener');
+        await openUrl(url);
+    } else {
+        window.open(url, '_blank');
+    }
 }
 </script>
-
-<style scoped>
-.nav-btn.active {
-    color: var(--color-primary);
-    background-color: color-mix(in oklab, var(--color-primary) 10%, transparent);
-    box-shadow: inset -2px 0 0 0 var(--color-primary); 
-}
-
-.nav-btn.active .nav-num {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
-}
-</style>

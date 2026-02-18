@@ -16,7 +16,7 @@
         "title": "GLM Tray",
         "width": 800,
         "height": 600,
-        "resizable": true,
+        "resizable": false,
         "visible": true
       }
     ],

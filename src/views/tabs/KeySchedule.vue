@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col gap-3">
+  <form id="schedule-form" class="flex flex-col gap-3" @submit.prevent="save">
     <!-- After Reset Mode -->
     <div class="card bg-base-100 card-border border-base-300 card-sm">
         <div class="card-body p-3 gap-2">
@@ -44,10 +44,10 @@
             </div>
             <div class="pl-6">
                 <div class="flex gap-1">
-                    <input v-for="i in 5" :key="i" class="input input-sm input-bordered w-12 text-center !px-1" 
-                           type="text" placeholder="--:--" 
-                           v-model="form.schedule_times[i-1]" 
-                           @blur="validateTime(i-1)" />
+                    <input v-for="i in 5" :key="i"
+                           class="input input-sm input-bordered w-12 wake-time text-center !px-1"
+                           type="text" placeholder="--:--"
+                           v-model="form.schedule_times[i-1]" />
                 </div>
                 <p class="text-[10px] opacity-40 mt-1.5">Up to 5 times in 24h HH:MM format</p>
             </div>
@@ -55,86 +55,152 @@
     </div>
 
     <!-- Actions -->
-    <div v-if="error" class="text-error font-semibold text-sm text-center">{{ error }}</div>
-    <div v-if="dirty && !error" class="flex justify-end">
-        <button class="btn btn-primary btn-block" @click="save" :disabled="loading">
-            <span v-if="loading" class="loading loading-spinner"></span>
-            Save Schedule
-        </button>
-    </div>
-    <div v-if="saved" class="text-success text-xs text-center font-medium">Schedule saved</div>
-  </div>
+    <button v-show="dirty && isFormValid" type="submit" class="btn btn-primary btn-block" id="schedule-save-btn">Save Schedule</button>
+    <p v-if="saved" class="text-success text-xs text-center font-medium">Schedule saved</p>
+    <p v-if="error" class="text-error font-semibold text-sm text-center">{{ error }}</p>
+  </form>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
-import { useKeysStore } from '../../stores/keys';
 import { useSettingsStore } from '../../stores/settings';
+import { useKeysStore } from '../../stores/keys';
 import { isValidHm } from '../../lib/ui-helpers';
 
 const props = defineProps<{ slotId: number }>();
 const settingsStore = useSettingsStore();
+const keysStore = useKeysStore();
 
 const form = ref({
     schedule_after_reset_enabled: false,
-    schedule_after_reset_minutes: 10,
+    schedule_after_reset_minutes: 1,
     schedule_interval_enabled: false,
     schedule_interval_minutes: 60,
     schedule_times_enabled: false,
-    schedule_times: ['', '', '', '', '']
+    schedule_times: ['', '', '', '', ''] as string[],
 });
 
-const original = ref<string>('');
+const snapshot = ref({
+    schedule_interval_enabled: false,
+    schedule_times_enabled: false,
+    schedule_after_reset_enabled: false,
+    schedule_interval_minutes: 60,
+    schedule_after_reset_minutes: 1,
+    schedule_times: [] as string[],
+});
+
 const error = ref('');
-const loading = ref(false);
 const saved = ref(false);
 
 function loadForm() {
     const slot = settingsStore.config?.slots.find(s => s.slot === props.slotId);
-    if (slot) {
-        form.value = {
-            schedule_after_reset_enabled: slot.schedule_after_reset_enabled,
-            schedule_after_reset_minutes: slot.schedule_after_reset_minutes,
-            schedule_interval_enabled: slot.schedule_interval_enabled,
-            schedule_interval_minutes: slot.schedule_interval_minutes,
-            schedule_times_enabled: slot.schedule_times_enabled,
-            schedule_times: [...slot.schedule_times, '', '', '', '', ''].slice(0, 5)
-        };
-        original.value = JSON.stringify(form.value);
-    }
+    if (!slot) return;
+
+    const times = [0, 1, 2, 3, 4].map(i => slot.schedule_times[i] ?? '');
+
+    form.value = {
+        schedule_after_reset_enabled: slot.schedule_after_reset_enabled,
+        schedule_after_reset_minutes: slot.schedule_after_reset_minutes,
+        schedule_interval_enabled: slot.schedule_interval_enabled,
+        schedule_interval_minutes: slot.schedule_interval_minutes,
+        schedule_times_enabled: slot.schedule_times_enabled,
+        schedule_times: times,
+    };
+
+    snapshot.value = {
+        schedule_interval_enabled: slot.schedule_interval_enabled,
+        schedule_times_enabled: slot.schedule_times_enabled,
+        schedule_after_reset_enabled: slot.schedule_after_reset_enabled,
+        schedule_interval_minutes: slot.schedule_interval_minutes,
+        schedule_after_reset_minutes: slot.schedule_after_reset_minutes,
+        schedule_times: [...slot.schedule_times],
+    };
 }
 
-const dirty = computed(() => JSON.stringify(form.value) !== original.value);
-
-function validateTime(idx: number) {
-    const val = form.value.schedule_times[idx].trim();
-    if (val && !isValidHm(val)) {
-        error.value = `Invalid time: ${val}`;
-    } else {
-        error.value = '';
-    }
+function getFormTimes(): string[] {
+    return form.value.schedule_times
+        .map(v => v.trim())
+        .filter(v => v.length > 0)
+        .slice(0, 5);
 }
+
+const isFormValid = computed(() => {
+    // Validate time inputs
+    for (const time of form.value.schedule_times) {
+        const val = time.trim();
+        if (val && !isValidHm(val)) return false;
+    }
+
+    // Validate number inputs
+    const interval = form.value.schedule_interval_minutes;
+    const afterReset = form.value.schedule_after_reset_minutes;
+
+    if (isNaN(interval) || interval < 1 || interval > 1440) return false;
+    if (isNaN(afterReset) || afterReset < 1 || afterReset > 1440) return false;
+
+    return true;
+});
+
+const dirty = computed(() => {
+    const intervalEnabled = form.value.schedule_interval_enabled;
+    const timesEnabled = form.value.schedule_times_enabled;
+    const afterResetEnabled = form.value.schedule_after_reset_enabled;
+    const interval = Math.max(1, form.value.schedule_interval_minutes || 1);
+    const afterReset = Math.max(1, form.value.schedule_after_reset_minutes || 1);
+    const times = getFormTimes();
+
+    return intervalEnabled !== snapshot.value.schedule_interval_enabled
+        || timesEnabled !== snapshot.value.schedule_times_enabled
+        || afterResetEnabled !== snapshot.value.schedule_after_reset_enabled
+        || interval !== snapshot.value.schedule_interval_minutes
+        || afterReset !== snapshot.value.schedule_after_reset_minutes
+        || times.join(',') !== snapshot.value.schedule_times.join(',');
+});
 
 async function save() {
-    if (error.value) return;
-    loading.value = true;
-    try {
-        const slot = settingsStore.config?.slots.find(s => s.slot === props.slotId);
-        if (slot) {
-            Object.assign(slot, {
-                ...form.value,
-                schedule_times: form.value.schedule_times.filter(t => t.trim())
-            });
-            await settingsStore.saveSettings(settingsStore.config!);
-            original.value = JSON.stringify(form.value);
-            saved.value = true;
-            setTimeout(() => saved.value = false, 2000);
-        }
-    } catch (e) {
-        error.value = 'Failed to save';
-    } finally {
-        loading.value = false;
+    error.value = '';
+
+    // Validate times
+    const scheduleTimes = getFormTimes();
+    const invalid = scheduleTimes.find(v => !isValidHm(v));
+    if (invalid) {
+        error.value = `Invalid time: ${invalid}. Use HH:MM (24h).`;
+        return;
     }
+
+    const slot = settingsStore.config?.slots.find(s => s.slot === props.slotId);
+    if (!slot) return;
+
+    // Update slot
+    slot.schedule_interval_enabled = form.value.schedule_interval_enabled;
+    slot.schedule_times_enabled = form.value.schedule_times_enabled;
+    slot.schedule_after_reset_enabled = form.value.schedule_after_reset_enabled;
+    slot.schedule_interval_minutes = Math.max(1, form.value.schedule_interval_minutes || 1);
+    slot.schedule_after_reset_minutes = Math.max(1, form.value.schedule_after_reset_minutes || 1);
+    slot.schedule_times = scheduleTimes;
+
+    try {
+        await settingsStore.saveSettings(settingsStore.config!);
+        await keysStore.fetchRuntime();
+    } catch (err) {
+        console.warn('failed to save schedule settings:', err);
+        error.value = 'Failed to save schedule settings';
+        return;
+    }
+
+    // Flash success toast
+    saved.value = true;
+    setTimeout(() => saved.value = false, 1500);
+
+    // Update snapshot
+    snapshot.value = {
+        schedule_interval_enabled: slot.schedule_interval_enabled,
+        schedule_times_enabled: slot.schedule_times_enabled,
+        schedule_after_reset_enabled: slot.schedule_after_reset_enabled,
+        schedule_interval_minutes: slot.schedule_interval_minutes,
+        schedule_after_reset_minutes: slot.schedule_after_reset_minutes,
+        schedule_times: [...slot.schedule_times],
+    };
 }
 
 watch(() => props.slotId, loadForm);

@@ -1,4 +1,4 @@
-import type { Platform } from "./types";
+import type { Platform, KeySlotConfig } from "./types";
 
 export const STORAGE_KEY = "glm-tray-preview-settings";
 export const isTauriRuntime =
@@ -6,9 +6,6 @@ export const isTauriRuntime =
 
 export const MAX_KEYS = 4;
 export const KEY_RANGE = Array.from({ length: MAX_KEYS }, (_, i) => i + 1);
-
-export const NAV_BTN_CLS =
-  "nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent text-base-content/60 cursor-pointer hover:text-base-content hover:bg-base-content/[.04] transition";
 
 export const PLATFORMS: Record<Platform, { label: string; base: string; quota: string; request: string }> = {
   zai: {
@@ -30,21 +27,21 @@ export function detectPlatform(quotaUrl: string): Platform {
   return "zai";
 }
 
-export function defaultSlot(slot: number) {
+export function defaultSlot(slot: number): KeySlotConfig {
   return {
     slot,
     name: "",
-    api_key: "",
-    quota_url: "https://api.z.ai/api/monitor/usage/quota/limit",
-    request_url: "https://api.z.ai/api/coding/paas/v4/chat/completions",
-    poll_interval_minutes: 30,
     enabled: false,
-    logging: false,
+    api_key: "",
+    quota_url: PLATFORMS.zai.quota,
+    request_url: PLATFORMS.zai.request,
     schedule_interval_enabled: false,
-    schedule_interval_minutes: 60,
-    schedule_after_reset_enabled: false,
-    schedule_after_reset_minutes: 10,
     schedule_times_enabled: false,
+    schedule_after_reset_enabled: false,
+    schedule_interval_minutes: 60,
     schedule_times: [],
+    schedule_after_reset_minutes: 1,
+    poll_interval_minutes: 30,
+    logging: false,
   };
 }

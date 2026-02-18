@@ -1,12 +1,31 @@
 import type { KeySlotConfig } from './types';
 
-export function getDotClass(slot: KeySlotConfig | undefined, rt: any) {
-    if (!rt) return 'bg-base-content/30';
-    if (rt.auto_disabled || rt.wake_auto_disabled || rt.quota_consecutive_errors > 0) return 'bg-error';
-    if (rt.timer_active) return 'bg-success shadow-[0_0_8px_rgba(0,255,100,0.6)]';
-    if (slot?.enabled) return 'bg-success'; // Idle but enabled
-    return 'bg-base-content/30';
+export function dotClass(
+    slot: KeySlotConfig | undefined,
+    rt: {
+        auto_disabled?: boolean;
+        wake_auto_disabled?: boolean;
+        wake_pending?: boolean;
+        quota_consecutive_errors?: number;
+        wake_consecutive_errors?: number;
+        consecutive_errors?: number;
+        enabled?: boolean;
+    } | undefined,
+): string {
+    if (
+        rt?.auto_disabled ||
+        rt?.wake_auto_disabled ||
+        (rt?.consecutive_errors && rt.consecutive_errors > 0) ||
+        (rt?.quota_consecutive_errors && rt.quota_consecutive_errors > 0) ||
+        (rt?.wake_consecutive_errors && rt.wake_consecutive_errors > 0)
+    )
+        return "bg-error";
+    if (rt?.enabled || slot?.enabled) return "bg-success";
+    return "bg-base-content/20";
 }
+
+// Keep old name as alias
+export const getDotClass = dotClass;
 
 export function formatTokens(n: number): string {
     if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + "B";
@@ -21,6 +40,6 @@ export function pctBarClass(pct: number): string {
     return "progress-info";
 }
 
-export function isValidHm(s: string): boolean {
-    return /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(s);
+export function isValidHm(value: string): boolean {
+    return /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
 }

@@ -3,10 +3,13 @@
  * Mock API server for development/testing
  * Simulates the z.ai API responses for quota and wake endpoints
  *
+ * Each API key gets its own independent state (quota, wake timer, stats).
+ * The key is identified from the Authorization header sent by the Rust backend.
+ *
  * Usage: node mock-server.cjs [options]
  * Options:
  *   --port=PORT       Server port (default: 3456)
- *   --expiry=MINUTES  Quota expiry time after wake in minutes (default: 10)
+ *   --expiry=MINUTES  Quota expiry time after wake in minutes (default: 3)
  *
  * Environment variables:
  *   MOCK_PORT       Server port
@@ -20,7 +23,7 @@ const url = require('url');
 function parseArgs() {
   const args = {
     port: parseInt(process.env.MOCK_PORT || '3456', 10),
-    expiryMinutes: parseFloat(process.env.MOCK_EXPIRY || '3'),  // Default 10 minutes after wake
+    expiryMinutes: parseFloat(process.env.MOCK_EXPIRY || '3'),
   };
 
   for (const arg of process.argv.slice(2)) {
@@ -38,32 +41,120 @@ function parseArgs() {
 
 const config = parseArgs();
 
-// ─── Stable simulated state ───────────────────────────────────────────────────
-// Data is generated ONCE at wake time and returned consistently on every request.
-// This matches real API behavior where data only changes on actual usage.
+// ─── Per-key state ───────────────────────────────────────────────────────────
+// Each unique API key gets its own KeyState with independent quota, wake timer,
+// and usage data. This lets you test multi-key scenarios realistically.
 
-let requestCount = 0;
+/**
+ * @typedef {Object} KeyState
+ * @property {string} keyId          - Short identifier for logging
+ * @property {number|null} wakeTimeEpoch
+ * @property {number|null} wakeExpiryEpoch
+ * @property {number} quotaPercentage
+ * @property {number} timeLimitUsage
+ * @property {Array} timeLimitDetails
+ * @property {number} modelCalls5h
+ * @property {number} tokens5h
+ * @property {number} modelCalls24h
+ * @property {number} tokens24h
+ * @property {number} toolNetworkSearch
+ * @property {number} toolWebRead
+ * @property {number} toolZread
+ * @property {number} toolSearchMcp
+ * @property {number} wakeCount       - Total number of wakes for this key
+ * @property {number} requestCount    - Total requests for this key
+ */
 
-// Wake state
-let wakeTimeEpoch = null;
-let wakeExpiryEpoch = null;
+/** @type {Map<string, KeyState>} */
+const keyStates = new Map();
 
-// Stable quota data (regenerated only on wake)
-let quotaPercentage = 0;
-let timeLimitUsage = 0;
-let timeLimitDetails = [];
+let globalRequestCount = 0;
 
-// Stable model-usage data (regenerated only on wake)
-let modelCalls5h = 0;
-let tokens5h = 0;
-let modelCalls24h = 0;
-let tokens24h = 0;
+// Predefined color profiles for different keys - gives each key a
+// distinctly different personality so you can tell them apart at a glance.
+const KEY_PROFILES = [
+  { label: 'Alpha', pctRange: [5, 15], callsRange: [50, 150], tokensRange: [500000, 2000000] },
+  { label: 'Beta', pctRange: [25, 45], callsRange: [200, 500], tokensRange: [3000000, 8000000] },
+  { label: 'Gamma', pctRange: [50, 70], callsRange: [400, 800], tokensRange: [8000000, 20000000] },
+  { label: 'Delta', pctRange: [10, 30], callsRange: [100, 300], tokensRange: [1000000, 5000000] },
+];
 
-// Stable tool-usage data (regenerated only on wake)
-let toolNetworkSearch = 0;
-let toolWebRead = 0;
-let toolZread = 0;
-let toolSearchMcp = 0;
+function randInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+/**
+ * Extract a short key identifier from the Authorization header.
+ * Returns something like "abc...xyz" or "unknown".
+ */
+function extractKeyId(authHeader) {
+  if (!authHeader) return 'no-key';
+
+  // Strip "Bearer " prefix
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token || token.length < 8) return token || 'no-key';
+
+  // Show first 4 and last 4 chars
+  return `${token.slice(0, 4)}…${token.slice(-4)}`;
+}
+
+/**
+ * Get a stable hash-like index from the full API key.
+ * Used to assign a consistent profile to each key.
+ */
+function keyProfileIndex(authHeader) {
+  const token = (authHeader || '').replace(/^Bearer\s+/i, '').trim();
+  let hash = 0;
+  for (let i = 0; i < token.length; i++) {
+    hash = ((hash << 5) - hash + token.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % KEY_PROFILES.length;
+}
+
+/**
+ * Get or create the state for a given API key.
+ */
+function getKeyState(authHeader) {
+  // Normalize: use full token as the map key
+  const token = (authHeader || '').replace(/^Bearer\s+/i, '').trim() || '__default__';
+
+  if (keyStates.has(token)) {
+    return keyStates.get(token);
+  }
+
+  // Create new state with profile-based defaults
+  const profileIdx = keyProfileIndex(authHeader);
+  const profile = KEY_PROFILES[profileIdx];
+
+  /** @type {KeyState} */
+  const state = {
+    keyId: extractKeyId(authHeader),
+    profileLabel: profile.label,
+    wakeTimeEpoch: null,
+    wakeExpiryEpoch: null,
+    quotaPercentage: 0,
+    timeLimitUsage: 0,
+    timeLimitDetails: [],
+    modelCalls5h: 0,
+    tokens5h: 0,
+    modelCalls24h: 0,
+    tokens24h: 0,
+    toolNetworkSearch: 0,
+    toolWebRead: 0,
+    toolZread: 0,
+    toolSearchMcp: 0,
+    wakeCount: 0,
+    requestCount: 0,
+    pctRange: profile.pctRange,
+    callsRange: profile.callsRange,
+    tokensRange: profile.tokensRange,
+  };
+
+  keyStates.set(token, state);
+  console.log(`\n  ✦ New key registered: [${state.keyId}] → profile "${profile.label}" (pct ${profile.pctRange[0]}-${profile.pctRange[1]}%)`);
+
+  return state;
+}
 
 function formatHMS(seconds) {
   const h = Math.floor(seconds / 3600);
@@ -72,58 +163,63 @@ function formatHMS(seconds) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function isQuotaWarm() {
-  if (wakeExpiryEpoch === null) return false;
-  return Date.now() < wakeExpiryEpoch;
+function isQuotaWarm(state) {
+  if (state.wakeExpiryEpoch === null) return false;
+  return Date.now() < state.wakeExpiryEpoch;
 }
 
-function getRemainingSeconds() {
-  if (wakeExpiryEpoch === null) return 0;
-  return Math.max(0, Math.floor((wakeExpiryEpoch - Date.now()) / 1000));
+function getRemainingSeconds(state) {
+  if (state.wakeExpiryEpoch === null) return 0;
+  return Math.max(0, Math.floor((state.wakeExpiryEpoch - Date.now()) / 1000));
 }
 
-// Generate stable random data for the current wake cycle
-function generateStableData() {
-  quotaPercentage = Math.floor(Math.random() * 20) + 5;
-  timeLimitUsage = Math.floor(Math.random() * 50) + 10;
-  timeLimitDetails = [
-    { modelCode: "search-prime", usage: Math.floor(Math.random() * 10) + 1 },
-    { modelCode: "web-reader", usage: Math.floor(Math.random() * 5) + 1 },
-    { modelCode: "zread", usage: Math.floor(Math.random() * 20) + 2 }
+// Generate stable random data for a specific key's wake cycle
+function generateStableData(state) {
+  const [pctMin, pctMax] = state.pctRange;
+  const [callsMin, callsMax] = state.callsRange;
+  const [tokMin, tokMax] = state.tokensRange;
+
+  state.quotaPercentage = randInt(pctMin, pctMax);
+  state.timeLimitUsage = randInt(10, 80);
+  state.timeLimitDetails = [
+    { modelCode: "search-prime", usage: randInt(1, 15) },
+    { modelCode: "web-reader", usage: randInt(1, 10) },
+    { modelCode: "zread", usage: randInt(2, 30) }
   ];
 
-  modelCalls5h = Math.floor(Math.random() * 200) + 50;
-  tokens5h = Math.floor(Math.random() * 5000000) + 1000000;
-  modelCalls24h = modelCalls5h + Math.floor(Math.random() * 300) + 100;
-  tokens24h = tokens5h + Math.floor(Math.random() * 10000000) + 3000000;
+  state.modelCalls5h = randInt(callsMin, callsMax);
+  state.tokens5h = randInt(tokMin, tokMax);
+  state.modelCalls24h = state.modelCalls5h + randInt(100, 400);
+  state.tokens24h = state.tokens5h + randInt(tokMin, tokMax);
 
-  toolNetworkSearch = Math.floor(Math.random() * 50) + 10;
-  toolWebRead = Math.floor(Math.random() * 30) + 5;
-  toolZread = Math.floor(Math.random() * 100) + 20;
-  toolSearchMcp = Math.floor(Math.random() * 40) + 8;
+  state.toolNetworkSearch = randInt(5, 60);
+  state.toolWebRead = randInt(2, 40);
+  state.toolZread = randInt(10, 120);
+  state.toolSearchMcp = randInt(5, 50);
 }
 
-// Wake the quota - start the timer and regenerate stable data
-function performWake() {
-  wakeTimeEpoch = Date.now();
-  wakeExpiryEpoch = wakeTimeEpoch + config.expiryMinutes * 60 * 1000;
-  generateStableData();
-  console.log(`[${new Date().toISOString()}] WAKE! Timer started, expires in ${config.expiryMinutes} min (${new Date(wakeExpiryEpoch).toLocaleTimeString()})`);
+// Wake a specific key
+function performWake(state) {
+  state.wakeTimeEpoch = Date.now();
+  state.wakeExpiryEpoch = state.wakeTimeEpoch + config.expiryMinutes * 60 * 1000;
+  state.wakeCount++;
+  generateStableData(state);
+  console.log(`  ⚡ [${state.keyId}] WAKE #${state.wakeCount}! Timer started, expires ${new Date(state.wakeExpiryEpoch).toLocaleTimeString()} (${config.expiryMinutes}min) → pct=${state.quotaPercentage}%, calls=${state.modelCalls5h}`);
 }
 
-// Quota response - matches real Z.ai API format
-function getQuotaResponse() {
-  const warm = isQuotaWarm();
+// Quota response for a specific key
+function getQuotaResponse(state) {
+  const warm = isQuotaWarm(state);
 
   const tokensLimit = {
     type: "TOKENS_LIMIT",
     unit: 3,
     number: 5,
-    percentage: warm ? quotaPercentage : 0,
+    percentage: warm ? state.quotaPercentage : 0,
   };
 
   if (warm) {
-    tokensLimit.nextResetTime = wakeExpiryEpoch;
+    tokensLimit.nextResetTime = state.wakeExpiryEpoch;
   }
 
   return {
@@ -133,11 +229,11 @@ function getQuotaResponse() {
         unit: 5,
         number: 1,
         usage: 1000,
-        currentValue: warm ? timeLimitUsage : 0,
-        remaining: warm ? 1000 - timeLimitUsage : 1000,
-        percentage: warm ? Math.floor(timeLimitUsage / 10) : 0,
+        currentValue: warm ? state.timeLimitUsage : 0,
+        remaining: warm ? 1000 - state.timeLimitUsage : 1000,
+        percentage: warm ? Math.floor(state.timeLimitUsage / 10) : 0,
         nextResetTime: null,
-        usageDetails: warm ? timeLimitDetails : []
+        usageDetails: warm ? state.timeLimitDetails : []
       },
       tokensLimit
     ],
@@ -145,7 +241,7 @@ function getQuotaResponse() {
   };
 }
 
-// Chat completion response - simulates wake
+// Chat completion response
 function getChatCompletionResponse() {
   return {
     id: "mock-" + Date.now(),
@@ -166,10 +262,7 @@ const server = http.createServer((req, res) => {
   const path = parsedUrl.pathname;
   const method = req.method;
 
-  requestCount++;
-  const warm = isQuotaWarm();
-  const statusStr = warm ? `WARM (${formatHMS(getRemainingSeconds())} left)` : 'COLD';
-  console.log(`[${new Date().toISOString()}] #${requestCount} ${method} ${path} [${statusStr}]`);
+  globalRequestCount++;
 
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -182,13 +275,47 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Health check (no auth needed)
+  if (path === '/' || path === '/health') {
+    const states = [];
+    for (const [, state] of keyStates) {
+      const warm = isQuotaWarm(state);
+      states.push({
+        keyId: state.keyId,
+        profile: state.profileLabel,
+        state: warm ? 'warm' : 'cold',
+        percentage: state.quotaPercentage,
+        remainingHMS: warm ? formatHMS(getRemainingSeconds(state)) : null,
+        wakeCount: state.wakeCount,
+        requestCount: state.requestCount,
+      });
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      message: 'Mock server running',
+      totalRequests: globalRequestCount,
+      keys: states,
+      config: { expiryMinutes: config.expiryMinutes }
+    }, null, 2));
+    return;
+  }
+
+  // All other endpoints need auth → per-key state
+  const authHeader = req.headers['authorization'] || '';
+  const state = getKeyState(authHeader);
+  state.requestCount++;
+
+  const warm = isQuotaWarm(state);
+  const statusStr = warm ? `WARM (${formatHMS(getRemainingSeconds(state))} left, ${state.quotaPercentage}%)` : 'COLD';
+  console.log(`[${new Date().toISOString()}] #${globalRequestCount} ${method} ${path} [${state.keyId}] [${statusStr}]`);
+
   // Route handling
   if (path.includes('/quota/limit') || path.includes('/monitor/usage/quota/limit')) {
-    // No random increment — data stays stable until next wake
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       code: 200,
-      data: getQuotaResponse(),
+      data: getQuotaResponse(state),
       msg: "Operation successful",
       success: true
     }));
@@ -196,38 +323,35 @@ const server = http.createServer((req, res) => {
   }
 
   if (path.includes('/chat/completions')) {
-    performWake();
+    performWake(state);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(getChatCompletionResponse()));
     return;
   }
 
   if (path.includes('/wake') || path.includes('/warmup')) {
-    performWake();
+    performWake(state);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       success: true,
       data: {
         message: "Wake successful - quota timer started",
         timestamp: Date.now(),
-        expiresAt: wakeExpiryEpoch
+        expiresAt: state.wakeExpiryEpoch
       }
     }));
     return;
   }
 
   if (path.includes('/model-usage')) {
-    // Return stable data — same values until next wake
     res.writeHead(200, { 'Content-Type': 'application/json' });
 
-    // Detect 5h vs 24h from startTime query param (simplified)
     const query = parsedUrl.query || {};
     const startTime = query.startTime || '';
     const is24h = !warm || startTime.length === 0;
 
-    // If cold, return zeros; if warm, return stable data
-    const calls = warm ? (is24h ? modelCalls24h : modelCalls5h) : 0;
-    const tokens = warm ? (is24h ? tokens24h : tokens5h) : 0;
+    const calls = warm ? (is24h ? state.modelCalls24h : state.modelCalls5h) : 0;
+    const tokens = warm ? (is24h ? state.tokens24h : state.tokens5h) : 0;
 
     res.end(JSON.stringify({
       code: 200,
@@ -244,40 +368,19 @@ const server = http.createServer((req, res) => {
   }
 
   if (path.includes('/tool-usage')) {
-    // Return stable data
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       code: 200,
       data: {
         totalUsage: {
-          totalNetworkSearchCount: warm ? toolNetworkSearch : 0,
-          totalWebReadMcpCount: warm ? toolWebRead : 0,
-          totalZreadMcpCount: warm ? toolZread : 0,
-          totalSearchMcpCount: warm ? toolSearchMcp : 0
+          totalNetworkSearchCount: warm ? state.toolNetworkSearch : 0,
+          totalWebReadMcpCount: warm ? state.toolWebRead : 0,
+          totalZreadMcpCount: warm ? state.toolZread : 0,
+          totalSearchMcpCount: warm ? state.toolSearchMcp : 0
         }
       },
       msg: "Operation successful",
       success: true
-    }));
-    return;
-  }
-
-  // Health check
-  if (path === '/' || path === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      status: 'ok',
-      message: 'Mock server running',
-      quota: {
-        state: isQuotaWarm() ? 'warm' : 'cold',
-        percentage: quotaPercentage,
-        remainingSeconds: getRemainingSeconds(),
-        remainingHMS: isQuotaWarm() ? formatHMS(getRemainingSeconds()) : null,
-        expiresAt: wakeExpiryEpoch
-      },
-      config: {
-        expiryMinutes: config.expiryMinutes
-      }
     }));
     return;
   }
@@ -288,23 +391,32 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(config.port, () => {
-  console.log(`Mock API server running on http://localhost:${config.port}`);
+  console.log(`\n  Mock API server running on http://localhost:${config.port}`);
   console.log('');
-  console.log('Configuration:');
-  console.log(`  Quota expiry after wake: ${config.expiryMinutes} minutes`);
+  console.log('  Configuration:');
+  console.log(`    Quota expiry after wake: ${config.expiryMinutes} minutes`);
   console.log('');
-  console.log('Behavior:');
-  console.log('  - Quota starts COLD (no nextResetTime)');
-  console.log('  - POST /chat/completions → WAKE (starts timer, generates stable data)');
-  console.log('  - All GET requests return SAME data until next wake or expiry');
-  console.log(`  - After ${config.expiryMinutes}min → COLD again (nextResetTime removed)`);
+  console.log('  Multi-key support:');
+  console.log('    Each API key gets independent state + a unique data profile.');
+  console.log('    The key is identified from the Authorization header.');
+  console.log('    Profiles assign different usage ranges so keys look distinct.');
   console.log('');
-  console.log('Endpoints:');
-  console.log('  GET  /api/monitor/usage/quota/limit     - Quota & timer state');
-  console.log('  GET  /api/monitor/usage/model-usage      - Model call/token stats');
-  console.log('  GET  /api/monitor/usage/tool-usage       - Tool usage stats');
-  console.log('  POST /api/coding/paas/v4/chat/completions - Wake');
-  console.log('  GET  /health                             - Health check');
+  console.log('  Key profiles:');
+  KEY_PROFILES.forEach((p, i) => {
+    console.log(`    ${i}: "${p.label}" → quota ${p.pctRange[0]}-${p.pctRange[1]}%, calls ${p.callsRange[0]}-${p.callsRange[1]}`);
+  });
   console.log('');
-  console.log('Quota is currently: COLD');
+  console.log('  Behavior:');
+  console.log('    - Each key starts COLD (no nextResetTime)');
+  console.log('    - POST /chat/completions → WAKE that key (starts timer, generates data)');
+  console.log('    - GET requests return stable data for that key until next wake/expiry');
+  console.log(`    - After ${config.expiryMinutes}min → that key goes COLD again`);
+  console.log('');
+  console.log('  Endpoints:');
+  console.log('    GET  /api/monitor/usage/quota/limit       - Quota & timer state');
+  console.log('    GET  /api/monitor/usage/model-usage       - Model call/token stats');
+  console.log('    GET  /api/monitor/usage/tool-usage        - Tool usage stats');
+  console.log('    POST /api/coding/paas/v4/chat/completions - Wake');
+  console.log('    GET  /health                              - Health check (all keys)');
+  console.log('');
 });

@@ -1,106 +1,123 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { getName, getVersion } from '@tauri-apps/api/app';
-import { check, Update } from '@tauri-apps/plugin-updater';
-import { relaunch } from '@tauri-apps/plugin-process';
+import { getVersion } from '@tauri-apps/api/app';
+import { check as tauriCheck } from '@tauri-apps/plugin-updater';
+import { relaunch as tauriRelaunch } from '@tauri-apps/plugin-process';
+import { isTauriRuntime } from '../lib/constants';
+import type { UpdateInfo } from '../lib/types';
+import { backendInvoke } from '../lib/api';
 
 export const useAppStore = defineStore('app', () => {
-    const theme = ref(localStorage.getItem('theme') || 'dim');
-    const version = ref('0.0.0');
-    const platform = ref('unknown');
-    const updateAvailable = ref<Update | null>(null);
-    const updateStatus = ref<'idle' | 'downloading' | 'ready'>('idle');
-    const updateProgress = ref(0);
+    const version = ref('');
     const pageTitle = ref('GLM Tray');
 
+    // Update state
+    const updateInfo = ref<UpdateInfo | null>(null);
+    const updateStatus = ref<'idle' | 'downloading' | 'ready'>('idle');
+    const updateProgress = ref(0);
+
+    // Computed-like
+    const updateAvailable = ref<{ version: string } | null>(null);
+
     async function init() {
-        try {
-            version.value = await getVersion();
-            const name = await getName();
-            platform.value = `${name} on ${navigator.platform}`; // Simplified
-        } catch {
-            version.value = 'dev';
-            platform.value = 'Browser';
+        // Fetch app version
+        if (isTauriRuntime) {
+            try {
+                version.value = await getVersion();
+            } catch {
+                version.value = 'dev';
+            }
+        } else {
+            version.value = 'preview';
         }
 
         // Apply theme
-        setTheme(theme.value);
+        document.documentElement.setAttribute('data-theme', 'glm');
 
-        // Check updates
-        checkForUpdates();
+        // Check for updates after a short delay
+        setTimeout(() => void checkAndShowUpdate(), 3000);
     }
 
-    function setTheme(t: string) {
-        theme.value = t;
-        document.documentElement.setAttribute('data-theme', t);
-        localStorage.setItem('theme', t);
-    }
+    async function checkAndShowUpdate() {
+        if (!isTauriRuntime) return;
 
-    async function checkForUpdates() {
         try {
-            const update = await check();
-            if (update?.available) {
-                updateAvailable.value = update;
-            }
-        } catch (e) {
-            console.warn('Update check failed', e);
+            const info = await backendInvoke<UpdateInfo>('check_for_updates_cmd');
+            if (!info.has_update) return;
+
+            updateInfo.value = info;
+            updateAvailable.value = { version: info.latest_version };
+        } catch (err) {
+            console.warn('Update check failed:', err);
         }
     }
 
     async function installUpdate() {
-        if (updateAvailable.value) {
-            updateStatus.value = 'downloading';
-            let contentLength = 0;
-            let downloaded = 0;
+        if (!isTauriRuntime) return;
 
-            try {
-                await updateAvailable.value.downloadAndInstall((event) => {
-                    switch (event.event) {
-                        case 'Started':
-                            contentLength = event.data.contentLength || 0;
-                            break;
-                        case 'Progress':
-                            downloaded += event.data.chunkLength;
-                            if (contentLength > 0) {
-                                updateProgress.value = Math.round((downloaded / contentLength) * 100);
-                            }
-                            break;
-                        case 'Finished':
-                            updateStatus.value = 'ready';
-                            break;
-                    }
-                });
-                updateStatus.value = 'ready';
-            } catch (e) {
-                console.error('Update failed', e);
+        updateStatus.value = 'downloading';
+        updateProgress.value = 0;
+
+        try {
+            const update = await tauriCheck();
+            if (!update) {
+                console.warn('Native updater returned null');
                 updateStatus.value = 'idle';
+                return;
             }
+
+            let downloaded = 0;
+            let contentLength = 0;
+
+            await update.downloadAndInstall((event) => {
+                switch (event.event) {
+                    case 'Started':
+                        contentLength = event.data.contentLength || 0;
+                        break;
+                    case 'Progress':
+                        downloaded += event.data.chunkLength;
+                        if (contentLength > 0) {
+                            updateProgress.value = Math.round((downloaded / contentLength) * 100);
+                        }
+                        break;
+                    case 'Finished':
+                        break;
+                }
+            });
+
+            updateStatus.value = 'ready';
+        } catch (err) {
+            console.error('Update download failed:', err);
+            updateStatus.value = 'idle';
         }
     }
 
     async function restartApp() {
-        await relaunch();
+        try {
+            await tauriRelaunch();
+        } catch (err) {
+            console.error('Relaunch failed:', err);
+        }
     }
 
     function dismissUpdate() {
+        updateInfo.value = null;
         updateAvailable.value = null;
         updateStatus.value = 'idle';
         updateProgress.value = 0;
     }
 
     return {
-        theme,
         version,
-        platform,
+        pageTitle,
+        updateInfo,
         updateAvailable,
         updateStatus,
         updateProgress,
-        pageTitle,
         init,
-        setTheme,
-        checkForUpdates,
+        checkAndShowUpdate,
         installUpdate,
         restartApp,
-        dismissUpdate
+        dismissUpdate,
     };
 });

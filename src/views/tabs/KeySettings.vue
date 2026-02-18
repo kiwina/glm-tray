@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col gap-3">
+  <form id="settings-form" class="flex flex-col gap-3" @submit.prevent="save">
       <div class="card bg-base-100 card-border border-base-300 card-sm">
         <div class="card-body p-4 gap-3">
           <!-- Platform -->
@@ -44,24 +44,24 @@
       </div>
 
       <div class="card-actions grid grid-cols-2 gap-2">
-        <button class="btn btn-sm" @click="resetSlot" :disabled="loading">Reset Slot</button>
-        <button class="btn btn-primary btn-sm" @click="save" :disabled="!dirty || loading">
-             <span v-if="loading" class="loading loading-spinner loading-xs"></span> 
-             Save
-        </button>
+        <button type="button" class="btn btn-sm" @click="resetSlot" id="slot-reset-btn">Reset Slot</button>
+        <button type="submit" class="btn btn-primary btn-sm" :disabled="!dirty" id="slot-save-btn">Save</button>
       </div>
       <p v-if="saved" class="text-success text-xs text-center font-medium">Settings saved</p>
       <p v-if="error" class="text-error font-semibold text-sm text-center">{{ error }}</p>
-  </div>
+  </form>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
 import { useSettingsStore } from '../../stores/settings';
+import { useKeysStore } from '../../stores/keys';
 import { PLATFORMS, detectPlatform, defaultSlot } from '../../lib/constants';
+import { logUiAction } from '../../lib/api';
 
 const props = defineProps<{ slotId: number }>();
 const settingsStore = useSettingsStore();
+const keysStore = useKeysStore();
 
 const form = ref({
     name: '',
@@ -70,34 +70,44 @@ const form = ref({
     enabled: false,
     logging: false,
     quota_url: '',
-    request_url: ''
+    request_url: '' as string | null,
 });
 
-const platform = ref('zai');
-const original = ref('');
+const platform = ref<'zai' | 'bigmodel'>('zai');
 const error = ref('');
-const loading = ref(false);
 const saved = ref(false);
+const original = ref('');
 
 function loadForm() {
     const slot = settingsStore.config?.slots.find(s => s.slot === props.slotId);
-    if (slot) {
-        form.value = { ...slot };
-        platform.value = detectPlatform(slot.quota_url);
-        original.value = JSON.stringify({ ...form.value, platform: platform.value });
-    }
+    if (!slot) return;
+
+    form.value = {
+        name: slot.name,
+        api_key: slot.api_key,
+        poll_interval_minutes: slot.poll_interval_minutes,
+        enabled: slot.enabled,
+        logging: slot.logging,
+        quota_url: slot.quota_url,
+        request_url: slot.request_url,
+    };
+
+    platform.value = detectPlatform(slot.quota_url);
+    original.value = JSON.stringify({ ...form.value, platform: platform.value });
 }
 
 const dirty = computed(() => JSON.stringify({ ...form.value, platform: platform.value }) !== original.value);
 
+// When platform changes, update URLs
 watch(platform, (p) => {
-    const plat = PLATFORMS[p as keyof typeof PLATFORMS];
+    const plat = PLATFORMS[p];
     if (plat) {
         form.value.quota_url = plat.quota;
         form.value.request_url = plat.request;
     }
 });
 
+// Auto-enable when API key is entered
 watch(() => form.value.api_key, (newVal) => {
     if (newVal.trim().length > 0 && !form.value.enabled) {
         form.value.enabled = true;
@@ -105,42 +115,54 @@ watch(() => form.value.api_key, (newVal) => {
 });
 
 async function save() {
-    loading.value = true;
-    try {
-        const slot = settingsStore.config?.slots.find(s => s.slot === props.slotId);
-        if (slot) {
-            Object.assign(slot, form.value);
-            await settingsStore.saveSettings(settingsStore.config!);
-            original.value = JSON.stringify({ ...form.value, platform: platform.value });
-            saved.value = true;
-            setTimeout(() => saved.value = false, 2000);
+    error.value = '';
+    if (!dirty.value) return;
+
+    const slot = settingsStore.config?.slots.find(s => s.slot === props.slotId);
+    if (!slot) return;
+
+    // validate
+    if (form.value.api_key.trim() && form.value.enabled) {
+        if (!form.value.quota_url?.startsWith('http')) {
+            error.value = 'Invalid quota URL';
+            return;
         }
+    }
+
+    logUiAction('save-key-settings', props.slotId);
+
+    Object.assign(slot, form.value);
+    try {
+        await settingsStore.saveSettings(settingsStore.config!);
+        await keysStore.fetchRuntime();
+        original.value = JSON.stringify({ ...form.value, platform: platform.value });
+        saved.value = true;
+        setTimeout(() => saved.value = false, 2000);
     } catch (e) {
         error.value = 'Failed to save';
-    } finally {
-        loading.value = false;
     }
 }
 
 async function resetSlot() {
-    if (!confirm('Are you sure you want to reset this slot?')) return;
-    loading.value = true;
+    logUiAction('reset-slot', props.slotId);
+
+    const slot = settingsStore.config?.slots.find(s => s.slot === props.slotId);
+    if (!slot) return;
+
+    const def = defaultSlot(slot.slot);
+    if (settingsStore.config?.global_quota_url) {
+        def.quota_url = settingsStore.config.global_quota_url;
+    }
+    if (settingsStore.config?.global_request_url) {
+        def.request_url = settingsStore.config.global_request_url;
+    }
+    Object.assign(slot, def);
     try {
-        const slot = settingsStore.config?.slots.find(s => s.slot === props.slotId);
-        if (slot) {
-            const def = defaultSlot(slot.slot);
-            if (settingsStore.config?.global_quota_url) {
-                def.quota_url = settingsStore.config.global_quota_url;
-            }
-            if (settingsStore.config?.global_request_url) {
-                def.request_url = settingsStore.config.global_request_url;
-            }
-            Object.assign(slot, def);
-            await settingsStore.saveSettings(settingsStore.config!);
-            loadForm();
-        }
-    } finally {
-        loading.value = false;
+        await settingsStore.saveSettings(settingsStore.config!);
+        await keysStore.fetchRuntime();
+        loadForm();
+    } catch (e) {
+        error.value = 'Failed to reset slot';
     }
 }
 
