@@ -129,6 +129,12 @@ async function resetSlot() {
         const slot = settingsStore.config?.slots.find(s => s.slot === props.slotId);
         if (slot) {
             const def = defaultSlot(slot.slot);
+            if (settingsStore.config?.global_quota_url) {
+                def.quota_url = settingsStore.config.global_quota_url;
+            }
+            if (settingsStore.config?.global_request_url) {
+                def.request_url = settingsStore.config.global_request_url;
+            }
             Object.assign(slot, def);
             await settingsStore.saveSettings(settingsStore.config!);
             loadForm();

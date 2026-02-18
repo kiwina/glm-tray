@@ -9,6 +9,8 @@ export const useAppStore = defineStore('app', () => {
     const version = ref('0.0.0');
     const platform = ref('unknown');
     const updateAvailable = ref<Update | null>(null);
+    const updateStatus = ref<'idle' | 'downloading' | 'ready'>('idle');
+    const updateProgress = ref(0);
     const pageTitle = ref('GLM Tray');
 
     async function init() {
@@ -47,14 +49,58 @@ export const useAppStore = defineStore('app', () => {
 
     async function installUpdate() {
         if (updateAvailable.value) {
-            await updateAvailable.value.downloadAndInstall();
-            await relaunch();
+            updateStatus.value = 'downloading';
+            let contentLength = 0;
+            let downloaded = 0;
+
+            try {
+                await updateAvailable.value.downloadAndInstall((event) => {
+                    switch (event.event) {
+                        case 'Started':
+                            contentLength = event.data.contentLength || 0;
+                            break;
+                        case 'Progress':
+                            downloaded += event.data.chunkLength;
+                            if (contentLength > 0) {
+                                updateProgress.value = Math.round((downloaded / contentLength) * 100);
+                            }
+                            break;
+                        case 'Finished':
+                            updateStatus.value = 'ready';
+                            break;
+                    }
+                });
+                updateStatus.value = 'ready';
+            } catch (e) {
+                console.error('Update failed', e);
+                updateStatus.value = 'idle';
+            }
         }
+    }
+
+    async function restartApp() {
+        await relaunch();
     }
 
     function dismissUpdate() {
         updateAvailable.value = null;
+        updateStatus.value = 'idle';
+        updateProgress.value = 0;
     }
 
-    return { theme, version, platform, updateAvailable, pageTitle, init, setTheme, checkForUpdates, installUpdate, dismissUpdate };
+    return {
+        theme,
+        version,
+        platform,
+        updateAvailable,
+        updateStatus,
+        updateProgress,
+        pageTitle,
+        init,
+        setTheme,
+        checkForUpdates,
+        installUpdate,
+        restartApp,
+        dismissUpdate
+    };
 });

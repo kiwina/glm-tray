@@ -30,18 +30,38 @@
       </div>
     </div>
 
-    <!-- Update Toast -->
-    <div v-if="appStore.updateAvailable" class="toast toast-top toast-end z-50">
-        <div class="alert alert-info shadow-lg text-sm">
-            <div>
-                <h3 class="font-bold">Update Available</h3>
-                <div class="text-xs">New version found.</div>
+    <!-- Update Notification Toast -->
+    <div v-if="appStore.updateAvailable" class="fixed top-4 right-4 z-[100]">
+      <div class="card bg-base-100 card-border border-base-300 shadow-xl w-72">
+        <div class="card-body p-4">
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <div class="p-1.5 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
+                <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </div>
+              <div>
+                <h3 class="font-bold text-sm">Update Available</h3>
+                <p class="text-xs text-primary font-medium">v{{ appStore.updateAvailable.version }}</p>
+              </div>
             </div>
-            <div class="flex-none">
-                <button class="btn btn-sm btn-ghost" @click="appStore.dismissUpdate">Later</button>
-                <button class="btn btn-sm btn-primary" @click="appStore.installUpdate">Update</button>
-            </div>
+            <button @click="appStore.dismissUpdate" class="btn btn-xs btn-ghost btn-circle"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+          
+          <div v-if="appStore.updateStatus === 'downloading'" class="mt-3">
+            <progress class="progress progress-primary w-full" :value="appStore.updateProgress" max="100"></progress>
+            <p class="text-xs text-center mt-1 opacity-60">{{ appStore.updateProgress }}%</p>
+          </div>
+          
+          <div v-else-if="appStore.updateStatus === 'ready'" class="mt-3">
+             <button @click="appStore.restartApp" class="btn btn-primary btn-sm btn-block">Restart to Update</button>
+          </div>
+          
+          <div v-else class="flex gap-2 mt-3">
+            <button @click="appStore.installUpdate" class="btn btn-primary btn-sm flex-1">Download</button>
+            <button @click="appStore.dismissUpdate" class="btn btn-ghost btn-sm">Later</button>
+          </div>
         </div>
+      </div>
     </div>
   </main>
 </template>
