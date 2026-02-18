@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:sample": "node docs/sample.mjs",
+    "dev:mock": "node docs/mock-server.cjs",
+    "dev:tauri": "tauri dev",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",

@@ -58,8 +58,8 @@ impl Default for KeySlotConfig {
             name: String::new(),
             enabled: false,
             api_key: String::new(),
-            quota_url: "https://api.z.ai/api/monitor/usage/quota/limit".to_string(),
-            request_url: Some("https://api.z.ai/api/coding/paas/v4/chat/completions".to_string()),
+            quota_url: default_global_quota_url(),
+            request_url: Some(default_global_request_url()),
             schedule_interval_enabled: false,
             schedule_times_enabled: false,
             schedule_after_reset_enabled: false,
@@ -92,6 +92,10 @@ pub struct AppConfig {
     #[serde(default = "default_quota_poll_backoff_cap_minutes")]
     pub quota_poll_backoff_cap_minutes: u64,
     #[serde(default)]
+    pub debug: bool,
+    #[serde(default)]
+    pub mock_url: Option<String>,
+    #[serde(default)]
     pub config_version: u32,
 }
 
@@ -113,6 +117,8 @@ impl Default for AppConfig {
             wake_quota_retry_window_minutes: default_wake_quota_retry_window_minutes(),
             max_consecutive_errors: default_max_consecutive_errors(),
             quota_poll_backoff_cap_minutes: default_quota_poll_backoff_cap_minutes(),
+            debug: false,
+            mock_url: None,
             config_version: CURRENT_CONFIG_VERSION,
         }
     }

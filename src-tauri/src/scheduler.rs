@@ -296,6 +296,7 @@ impl SchedulerManager {
     ) {
         info!("slot {} wake scheduler started", idx + 1);
         let initial_cfg = config_rx.borrow().clone();
+        let initial_app_cfg = app_config_rx.borrow().clone();
         let _ = log_scheduler_event(
             &app,
             &initial_cfg,
@@ -304,7 +305,7 @@ impl SchedulerManager {
         )
         .await;
 
-        let client = match ApiClient::new(Some(app.clone())) {
+        let client = match ApiClient::new(Some(app.clone()), initial_app_cfg.debug, initial_app_cfg.mock_url) {
             Ok(client) => client,
             Err(err) => {
                 warn!("slot {} client setup failed: {}", idx + 1, err);
@@ -642,6 +643,7 @@ impl SchedulerManager {
     ) {
         info!("slot {} quota poller started", idx + 1);
         let initial_cfg = config_rx.borrow().clone();
+        let initial_app_cfg = app_config_rx.borrow().clone();
         let _ = log_scheduler_event(
             &app,
             &initial_cfg,
@@ -651,7 +653,7 @@ impl SchedulerManager {
         .await;
         let mut poll_now_signal = false;
 
-        let client = match ApiClient::new(Some(app.clone())) {
+        let client = match ApiClient::new(Some(app.clone()), initial_app_cfg.debug, initial_app_cfg.mock_url) {
             Ok(client) => client,
             Err(err) => {
                 warn!("slot {} client setup failed: {}", idx + 1, err);

@@ -73,6 +73,8 @@ impl From<AppConfigV2> for AppConfig {
             wake_quota_retry_window_minutes: 15,
             max_consecutive_errors: 10,
             quota_poll_backoff_cap_minutes: 480,
+            debug: false,
+            mock_url: None,
         }
     }
 }
@@ -111,12 +113,30 @@ fn migrate(raw_json: &str) -> Result<AppConfig, String> {
     Ok(cfg)
 }
 
+/// Check if debug mode is enabled via environment variable
+fn is_debug_mode() -> bool {
+    std::env::var("GLM_TRAY_DEBUG")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// Check if URL is valid (https:// always, or http:// in debug mode)
+fn is_valid_url(url: &str) -> bool {
+    if url.starts_with("https://") {
+        return true;
+    }
+    if is_debug_mode() && url.starts_with("http://") {
+        return true;
+    }
+    false
+}
+
 /// Clamp, trim, and sanitise every field so the rest of the app can trust it.
 fn validate(mut cfg: AppConfig) -> AppConfig {
     let default_global_quota = cfg.global_quota_url.trim().to_string();
     let default_global_request = cfg.global_request_url.trim().to_string();
 
-    if default_global_quota.is_empty() || !default_global_quota.starts_with("https://") {
+    if default_global_quota.is_empty() || !is_valid_url(&default_global_quota) {
         warn!(
             "config: invalid global_quota_url '{}', resetting to default",
             cfg.global_quota_url
@@ -126,7 +146,7 @@ fn validate(mut cfg: AppConfig) -> AppConfig {
         cfg.global_quota_url = default_global_quota;
     }
 
-    if default_global_request.is_empty() || !default_global_request.starts_with("https://") {
+    if default_global_request.is_empty() || !is_valid_url(&default_global_request) {
         warn!(
             "config: invalid global_request_url '{}', resetting to default",
             cfg.global_request_url
@@ -167,15 +187,15 @@ fn validate(mut cfg: AppConfig) -> AppConfig {
         // -- api_key: trim whitespace (no length cap – keys vary by platform) --
         slot.api_key = slot.api_key.trim().to_string();
 
-        // -- URLs: must start with https:// or fall back to defaults --
-        if !slot.quota_url.starts_with("https://") {
+        // -- URLs: must be valid (https://, or http:// in debug mode) or fall back to defaults --
+        if !is_valid_url(&slot.quota_url) {
             if !slot.quota_url.trim().is_empty() {
                 warn!("slot {}: invalid quota_url '{}', resetting to default", slot.slot, slot.quota_url);
             }
             slot.quota_url = cfg.global_quota_url.clone();
         }
         if let Some(ref url) = slot.request_url {
-            if !url.starts_with("https://") {
+            if !is_valid_url(url) {
                 warn!("slot {}: invalid request_url '{}', resetting to default", slot.slot, url);
                 slot.request_url = Some(cfg.global_request_url.clone());
             }

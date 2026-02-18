@@ -31,6 +31,8 @@ export interface AppConfig {
   wake_quota_retry_window_minutes: number;
   max_consecutive_errors: number;
   quota_poll_backoff_cap_minutes: number;
+  debug: boolean;
+  mock_url?: string | null;
   config_version?: number;
 }
 

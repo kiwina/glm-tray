@@ -94,7 +94,7 @@ async fn warmup_slot(app: tauri::AppHandle, state: tauri::State<'_, SharedState>
         return Err("slot is disabled or has no API key".into());
     }
 
-    let client = api_client::ApiClient::new(Some(app))?;
+    let client = api_client::ApiClient::new(Some(app), config.debug, config.mock_url.clone())?;
     if is_slot_quota_full_realtime(&client, &state.runtime_status, slot_cfg).await {
         return Err("slot reset window is still active".into());
     }
@@ -111,7 +111,7 @@ async fn fetch_slot_stats(app: tauri::AppHandle, state: tauri::State<'_, SharedS
     if slot_cfg.api_key.trim().is_empty() {
         return Err("no API key configured".into());
     }
-    let client = api_client::ApiClient::new(Some(app))?;
+    let client = api_client::ApiClient::new(Some(app), config.debug, config.mock_url.clone())?;
     client.fetch_slot_stats(slot_cfg).await
 }
 
@@ -163,7 +163,7 @@ pub async fn warmup_all_internal(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<SharedState>();
     let config = state.config.read().await.clone();
     let runtime_status = state.runtime_status.clone();
-    let client = api_client::ApiClient::new(Some(app.clone()))?;
+    let client = api_client::ApiClient::new(Some(app.clone()), config.debug, config.mock_url.clone())?;
 
     for slot_cfg in &config.slots {
         if !slot_cfg.enabled || slot_cfg.api_key.trim().is_empty() {

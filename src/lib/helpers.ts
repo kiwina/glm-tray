@@ -40,6 +40,8 @@ export function defaultConfig(): AppConfig {
     wake_quota_retry_window_minutes: 15,
     max_consecutive_errors: 10,
     quota_poll_backoff_cap_minutes: 480,
+    debug: false,
+    mock_url: null,
   };
 }
 
@@ -116,6 +118,8 @@ export function normalizeConfig(config: AppConfig): AppConfig {
     wake_quota_retry_window_minutes,
     max_consecutive_errors,
     quota_poll_backoff_cap_minutes,
+    debug: config.debug ?? false,
+    mock_url: config.mock_url?.trim() || null,
   };
 }
 

@@ -9,27 +9,8 @@
 import https from 'https';
 
 // Read environment variables
-const baseUrl = process.env.ANTHROPIC_BASE_URL || '';
-const authToken = process.env.ANTHROPIC_AUTH_TOKEN || '';
-
-if (!authToken) {
-  console.error('Error: ANTHROPIC_AUTH_TOKEN is not set');
-  console.error('');
-  console.error('Set the environment variable and retry:');
-  console.error('  export ANTHROPIC_AUTH_TOKEN="your-token-here"');
-  process.exit(1);
-}
-
-// Validate ANTHROPIC_BASE_URL
-if (!baseUrl) {
-  console.error('Error: ANTHROPIC_BASE_URL is not set');
-  console.error('');
-  console.error('Set the environment variable and retry:');
-  console.error('  export ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic"');
-  console.error('  or');
-  console.error('  export ANTHROPIC_BASE_URL="https://open.bigmodel.cn/api/anthropic"');
-  process.exit(1);
-}
+const baseUrl = 'https://api.z.ai/api/anthropic';
+const authToken = 'REDACTED_API_KEY';
 
 // Determine which platform to use
 let platform;
@@ -164,9 +145,9 @@ const queryUsage = (apiUrl, label, appendQueryParams = true, postProcessor = nul
 };
 
 const run = async () => {
-  await queryUsage(modelUsageUrl, 'Model usage');
-  await queryUsage(toolUsageUrl, 'Tool usage');
-  await queryUsage(quotaLimitUrl, 'Quota limit', false, processQuotaLimit);
+  //await queryUsage(modelUsageUrl, 'Model usage');
+  //await queryUsage(toolUsageUrl, 'Tool usage');
+  await queryUsage(quotaLimitUrl, 'Quota limit');
 };
 
 run().catch((error) => {

@@ -124,6 +124,19 @@ export async function loadStats(slotNum: number): Promise<void> {
     setCachedStats(slotNum, stats);
   } catch (err) {
     console.warn("stats fetch failed:", err);
+    // Set empty stats on failure to prevent infinite retry loop
+    setCachedStats(slotNum, {
+      level: "unknown",
+      limits: [],
+      total_model_calls_24h: 0,
+      total_tokens_24h: 0,
+      total_model_calls_5h: 0,
+      total_tokens_5h: 0,
+      total_network_search_24h: 0,
+      total_web_read_24h: 0,
+      total_zread_24h: 0,
+      total_search_mcp_24h: 0,
+    });
   } finally {
     setStatsLoading(false);
     if (currentView === String(slotNum)) {

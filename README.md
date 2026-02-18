@@ -172,6 +172,16 @@ npm run tauri build
 
 The built installers will be in `src-tauri/target/release/bundle/`.
 
+### Debug Mode
+
+For testing wake functionality without hitting production APIs:
+
+1. Start the mock server: `node mock-server.cjs`
+2. Enable debug mode in Global Settings → Developer section
+3. All API calls will be routed to the mock server
+
+See [docs/DEBUGGING.md](docs/DEBUGGING.md) for full documentation.
+
 ### Project Structure
 
 ```

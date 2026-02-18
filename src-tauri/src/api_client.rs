@@ -1,5 +1,5 @@
 use chrono::{Local, TimeZone};
-use log::{debug, info};
+use log::{debug, info, warn};
 use reqwest::header::{ACCEPT_LANGUAGE, AUTHORIZATION, CONTENT_TYPE};
 use std::time::Instant;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -11,21 +11,70 @@ use crate::models::{KeySlotConfig, QuotaApiResponse, QuotaApiResponseFull, Quota
 
 static FLOW_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
+/// Check if debug mode is enabled from config
+fn is_debug_mode(config_debug: Option<bool>) -> bool {
+    config_debug.unwrap_or(false)
+}
+
+/// Get the mock server base URL from config
+fn mock_base_url(config_mock_url: Option<&str>) -> String {
+    if let Some(url) = config_mock_url {
+        if !url.is_empty() {
+            return url.to_string();
+        }
+    }
+    "http://localhost:3456".to_string()
+}
+
+/// Override URL to mock server if debug mode is enabled
+fn debug_url(url: &str, config_debug: Option<bool>, config_mock_url: Option<&str>) -> String {
+    if !is_debug_mode(config_debug) {
+        return url.to_string();
+    }
+
+    // Replace the base URL with mock server
+    let base = mock_base_url(config_mock_url);
+
+    // Extract the path from the original URL
+    if let Ok(parsed) = reqwest::Url::parse(url) {
+        let path = parsed.path();
+        format!("{}{}", base, path)
+    } else {
+        warn!("debug mode: failed to parse URL '{}', using as-is", url);
+        url.to_string()
+    }
+}
+
 #[derive(Clone)]
 pub struct ApiClient {
     client: reqwest::Client,
     app: Option<tauri::AppHandle>,
+    debug: bool,
+    mock_url: Option<String>,
 }
 
 impl ApiClient {
-    pub fn new(app: Option<tauri::AppHandle>) -> Result<Self, String> {
-        let client = reqwest::Client::builder()
+    pub fn new(app: Option<tauri::AppHandle>, debug: bool, mock_url: Option<String>) -> Result<Self, String> {
+        let mut builder = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(5))
-            .timeout(std::time::Duration::from_secs(15))
+            .timeout(std::time::Duration::from_secs(15));
+
+        // In debug mode (or if mock_url is localhost), accept invalid certs for localhost testing
+        let is_debug = debug || mock_url.as_ref().map_or(false, |u| u.contains("localhost") || u.starts_with("http://"));
+        if is_debug {
+            warn!("debug mode enabled - accepting invalid certificates");
+            builder = builder.danger_accept_invalid_certs(true);
+        }
+
+        let client = builder
             .build()
             .map_err(|err| format!("failed to create HTTP client: {err}"))?;
 
-        Ok(Self { client, app })
+        if is_debug {
+            info!("API client initialized in debug mode");
+        }
+
+        Ok(Self { client, app, debug, mock_url })
     }
 
     fn auth_header(api_key: &str) -> String {
@@ -53,9 +102,12 @@ impl ApiClient {
     }
 
     pub async fn warmup_key(&self, cfg: &KeySlotConfig) -> Result<(), String> {
-        let Some(url) = cfg.request_url.clone() else {
+        let Some(original_url) = cfg.request_url.clone() else {
             return Err("no request URL configured".to_string());
         };
+
+        // Apply debug URL transformation if enabled
+        let url = debug_url(&original_url, Some(self.debug), self.mock_url.as_deref());
 
         let body = json!({
             "model": "glm-5",
@@ -149,9 +201,12 @@ impl ApiClient {
     }
 
     pub async fn send_wake_request(&self, cfg: &KeySlotConfig) -> Result<(), String> {
-        let Some(url) = cfg.request_url.clone() else {
+        let Some(original_url) = cfg.request_url.clone() else {
             return Ok(());
         };
+
+        // Apply debug URL transformation if enabled
+        let url = debug_url(&original_url, Some(self.debug), self.mock_url.as_deref());
 
         let body = json!({
             "model": "glm-5",
@@ -247,7 +302,10 @@ impl ApiClient {
     }
 
     pub async fn fetch_quota(&self, cfg: &KeySlotConfig) -> Result<QuotaSnapshot, String> {
-        debug!("slot {}: fetching quota from {}", cfg.slot, cfg.quota_url);
+        // Apply debug URL transformation if enabled
+        let url = debug_url(&cfg.quota_url, Some(self.debug), self.mock_url.as_deref());
+
+        debug!("slot {}: fetching quota from {}", cfg.slot, url);
         let flow_id = self.next_flow_id(cfg, "background-quota-poll");
         self.log(
             cfg,
@@ -255,7 +313,7 @@ impl ApiClient {
                 cfg.slot,
                 "background-quota-poll",
                 "GET",
-                &cfg.quota_url,
+                &url,
                 None,
                 flow_id.clone(),
             ),
@@ -265,7 +323,7 @@ impl ApiClient {
 
         let req = self
             .client
-            .get(&cfg.quota_url)
+            .get(&url)
             .header(AUTHORIZATION, Self::auth_header(&cfg.api_key))
             .header(ACCEPT_LANGUAGE, "en-US")
             .header(CONTENT_TYPE, "application/json");
@@ -280,7 +338,7 @@ impl ApiClient {
                         cfg.slot,
                         "background-quota-poll",
                         "GET",
-                        &cfg.quota_url,
+                        &url,
                         &msg,
                         flow_id,
                     ),
@@ -300,7 +358,7 @@ impl ApiClient {
                     cfg.slot,
                     "background-quota-poll",
                     "GET",
-                    &cfg.quota_url,
+                    &url,
                     &msg,
                     flow_id,
                 ),
@@ -322,7 +380,7 @@ impl ApiClient {
                 cfg.slot,
                 "background-quota-poll",
                 "GET",
-                &cfg.quota_url,
+                &url,
                 status.as_u16(),
                 resp_json,
                 elapsed,
@@ -341,7 +399,7 @@ impl ApiClient {
                         cfg.slot,
                         "background-quota-poll",
                         "GET",
-                        &cfg.quota_url,
+                        &url,
                         &msg,
                         flow_id,
                     ),
@@ -359,7 +417,7 @@ impl ApiClient {
                     cfg.slot,
                     "background-quota-poll",
                     "GET",
-                    &cfg.quota_url,
+                    &url,
                     &msg,
                     flow_id.clone(),
                 ),
@@ -378,7 +436,7 @@ impl ApiClient {
                         cfg.slot,
                         "background-quota-poll",
                         "GET",
-                        &cfg.quota_url,
+                        &url,
                         &msg,
                         flow_id.clone(),
                     ),
@@ -396,7 +454,7 @@ impl ApiClient {
                     cfg.slot,
                     "background-quota-poll",
                     "GET",
-                    &cfg.quota_url,
+                    &url,
                     &msg,
                     flow_id.clone(),
                 ),
@@ -443,11 +501,14 @@ impl ApiClient {
     pub async fn fetch_slot_stats(&self, cfg: &KeySlotConfig) -> Result<SlotStats, String> {
         let auth = Self::auth_header(&cfg.api_key);
 
+        // Apply debug URL transformation if enabled
+        let quota_url = debug_url(&cfg.quota_url, Some(self.debug), self.mock_url.as_deref());
+
         // 1. Fetch full quota/limit
-        self.log(cfg, file_logger::request_entry(cfg.slot, "manual-stats-request", "GET", &cfg.quota_url, None)).await;
+        self.log(cfg, file_logger::request_entry(cfg.slot, "manual-stats-request", "GET", &quota_url, None)).await;
         let quota_resp = self
             .client
-            .get(&cfg.quota_url)
+            .get(&quota_url)
             .header(AUTHORIZATION, auth.clone())
             .header(ACCEPT_LANGUAGE, "en-US")
             .header(CONTENT_TYPE, "application/json")
@@ -457,13 +518,13 @@ impl ApiClient {
 
         if !quota_resp.status().is_success() {
             let msg = format!("quota HTTP error: {}", quota_resp.status());
-            self.log(cfg, file_logger::error_entry(cfg.slot, "manual-stats-request", "GET", &cfg.quota_url, &msg)).await;
+            self.log(cfg, file_logger::error_entry(cfg.slot, "manual-stats-request", "GET", &quota_url, &msg)).await;
             return Err(msg);
         }
 
         let quota_text = quota_resp.text().await.map_err(|e| format!("read quota: {e}"))?;
         let resp_json: Option<serde_json::Value> = serde_json::from_str(&quota_text).ok();
-        self.log(cfg, file_logger::response_entry(cfg.slot, "manual-stats-request", "GET", &cfg.quota_url, 200, resp_json)).await;
+        self.log(cfg, file_logger::response_entry(cfg.slot, "manual-stats-request", "GET", &quota_url, 200, resp_json)).await;
         let quota_parsed: QuotaApiResponseFull =
             serde_json::from_str(&quota_text).map_err(|e| format!("parse quota: {e}"))?;
 
@@ -511,7 +572,7 @@ impl ApiClient {
             .collect();
 
         // 2. Derive base URL for model-usage / tool-usage and calculate time ranges
-        let base = cfg.quota_url.trim_end_matches("/quota/limit");
+        let base = quota_url.trim_end_matches("/quota/limit");
         let now = Local::now();
         let start_24h = (now - chrono::Duration::hours(24)).format("%Y-%m-%d %H:%M:%S").to_string();
         let end = now.format("%Y-%m-%d %H:%M:%S").to_string();
