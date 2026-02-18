@@ -35,7 +35,8 @@ dirs = "6.0.0"
 
 [profile.release]
 lto = "thin"
-codegen-units = 1
+codegen-units = 14    # parallelizes codegen; ~1-5% larger binary but much faster builds
 opt-level = "z"
 strip = true
+panic = "abort"       # smaller binary, no unwind tables
 

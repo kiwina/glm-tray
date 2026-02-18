@@ -745,7 +745,68 @@ impl SchedulerManager {
             );
         }
 
+        // When initial wake fires poll_now, we must wait for it before the first
+        // fetch_quota so we don't fire a duplicate request.  When no initial wake
+        // happened we still want an immediate first poll, so we skip the wait.
+        let mut first_iteration = true;
+
         loop {
+            // Wait for the next poll interval (or a signal) BEFORE fetching.
+            // On the very first iteration we only wait if the initial wake
+            // already sent a poll_now signal — otherwise we poll immediately.
+            let should_wait_first = !first_iteration || poll_now_signal;
+            first_iteration = false;
+
+            if should_wait_first {
+                let cfg_for_sleep = config_rx.borrow().clone();
+                let current_policy_for_sleep = SchedulerPolicy::from(&*app_config_rx.borrow());
+
+                // Determine sleep duration — recomputed each iteration from
+                // the last-known retry/wake state.
+                let retry_quota_now_for_sleep = {
+                    should_retry_quota_while_wake_pending(&schedule, &runtime_status, idx).await
+                };
+                let consecutive_errors_for_sleep = if retry_quota_now_for_sleep {
+                    0
+                } else {
+                    let runtime = runtime_status.read().await;
+                    runtime
+                        .slots
+                        .get(idx)
+                        .map(|slot| slot.quota_consecutive_errors)
+                        .unwrap_or(0)
+                };
+                let sleep_minutes = if consecutive_errors_for_sleep == 0 {
+                    if retry_quota_now_for_sleep {
+                        1
+                    } else {
+                        cfg_for_sleep.poll_interval_minutes.max(1)
+                    }
+                } else {
+                    let backoff = cfg_for_sleep.poll_interval_minutes.max(1)
+                        .saturating_mul(1u64 << consecutive_errors_for_sleep.min(6));
+                    backoff.min(current_policy_for_sleep.quota_backoff_cap_minutes)
+                };
+
+                tokio::select! {
+                    _ = stop_rx.changed() => {
+                        if *stop_rx.borrow() {
+                            break;
+                        }
+                    }
+                    _ = config_rx.changed() => {
+                        info!("slot {} quota poller detected config change", idx + 1);
+                    }
+                    _ = app_config_rx.changed() => {
+                        info!("slot {} quota poller detected policy change", idx + 1);
+                    }
+                    _ = poll_now_rx.changed() => {
+                        info!("slot {} quota poller received immediate poll signal", idx + 1);
+                    }
+                    _ = time::sleep(Duration::from_secs(sleep_minutes * 60)) => {}
+                }
+            }
+
             let current_policy = SchedulerPolicy::from(&*app_config_rx.borrow());
             let cfg = config_rx.borrow().clone();
 
@@ -804,7 +865,7 @@ impl SchedulerManager {
             // Fetch quota
             let mut retry_quota_now = false;
             let mut wake_window_active = false;
-            match client.fetch_quota(&cfg).await {
+            match client.fetch_quota(&cfg, "quota-poll").await {
                 Ok(snapshot) => {
                     let was_wake_pending = {
                         let runtime = runtime_status.read().await;
@@ -1060,51 +1121,6 @@ impl SchedulerManager {
             if let Err(err) = tray::refresh_tray(&app, runtime_snapshot, has_ready_slots) {
                 error!("failed to refresh tray for slot {}: {}", idx + 1, err);
             }
-
-            // Calculate sleep duration with backoff
-            let consecutive_errors = if retry_quota_now || wake_window_active {
-                0
-            } else {
-                let runtime = runtime_status.read().await;
-                runtime
-                    .slots
-                    .get(idx)
-                    .map(|slot| slot.quota_consecutive_errors)
-                    .unwrap_or(0)
-            };
-
-            let sleep_minutes = if consecutive_errors == 0 {
-                if retry_quota_now || wake_window_active {
-                    1
-                } else {
-                    cfg.poll_interval_minutes.max(1)
-                }
-            } else {
-                let backoff = cfg.poll_interval_minutes.max(1)
-                    .saturating_mul(1u64 << consecutive_errors.min(6));
-                let capped = backoff.min(current_policy.quota_backoff_cap_minutes);
-                info!("slot {} backing off: next poll in {} min", idx + 1, capped);
-                capped
-            };
-
-            // Sleep for poll interval, but wake immediately if signaled
-            tokio::select! {
-                _ = stop_rx.changed() => {
-                    if *stop_rx.borrow() {
-                        break;
-                    }
-                }
-                _ = config_rx.changed() => {
-                    info!("slot {} quota poller detected config change", idx + 1);
-                }
-                _ = app_config_rx.changed() => {
-                    info!("slot {} quota poller detected policy change", idx + 1);
-                }
-                _ = poll_now_rx.changed() => {
-                    info!("slot {} quota poller received immediate poll signal", idx + 1);
-                }
-                _ = time::sleep(Duration::from_secs(sleep_minutes * 60)) => {}
-            }
         }
 
         info!("slot {} quota poller stopped", idx + 1);
@@ -1257,7 +1273,7 @@ async fn is_wake_required(
         // so the app can observe externally triggered activity correctly.
     }
 
-    match client.fetch_quota(cfg).await {
+    match client.fetch_quota(cfg, "wake-precheck").await {
         Ok(snapshot) => {
             let mut runtime = runtime_status.write().await;
             if let Some(current) = runtime.slots.get_mut(idx) {

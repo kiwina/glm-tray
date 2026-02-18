@@ -301,17 +301,17 @@ impl ApiClient {
         Ok(())
     }
 
-    pub async fn fetch_quota(&self, cfg: &KeySlotConfig) -> Result<QuotaSnapshot, String> {
+    pub async fn fetch_quota(&self, cfg: &KeySlotConfig, caller: &str) -> Result<QuotaSnapshot, String> {
         // Apply debug URL transformation if enabled
         let url = debug_url(&cfg.quota_url, Some(self.debug), self.mock_url.as_deref());
 
-        debug!("slot {}: fetching quota from {}", cfg.slot, url);
-        let flow_id = self.next_flow_id(cfg, "background-quota-poll");
+        debug!("slot {}: fetching quota from {} (caller: {})", cfg.slot, url, caller);
+        let flow_id = self.next_flow_id(cfg, caller);
         self.log(
             cfg,
             file_logger::request_entry_with_id(
                 cfg.slot,
-                "background-quota-poll",
+                caller,
                 "GET",
                 &url,
                 None,
@@ -336,7 +336,7 @@ impl ApiClient {
                     cfg,
                     file_logger::error_entry_with_id(
                         cfg.slot,
-                        "background-quota-poll",
+                        caller,
                         "GET",
                         &url,
                         &msg,
@@ -356,7 +356,7 @@ impl ApiClient {
                 cfg,
                 file_logger::error_entry_with_id(
                     cfg.slot,
-                    "background-quota-poll",
+                    caller,
                     "GET",
                     &url,
                     &msg,
@@ -378,7 +378,7 @@ impl ApiClient {
             cfg,
             file_logger::response_entry_with_timing_and_id(
                 cfg.slot,
-                "background-quota-poll",
+                caller,
                 "GET",
                 &url,
                 status.as_u16(),
@@ -397,7 +397,7 @@ impl ApiClient {
                     cfg,
                     file_logger::error_entry_with_id(
                         cfg.slot,
-                        "background-quota-poll",
+                        caller,
                         "GET",
                         &url,
                         &msg,
@@ -415,7 +415,7 @@ impl ApiClient {
                 cfg,
                 file_logger::error_entry_with_id(
                     cfg.slot,
-                    "background-quota-poll",
+                    caller,
                     "GET",
                     &url,
                     &msg,
@@ -434,7 +434,7 @@ impl ApiClient {
                     cfg,
                     file_logger::error_entry_with_id(
                         cfg.slot,
-                        "background-quota-poll",
+                        caller,
                         "GET",
                         &url,
                         &msg,
@@ -452,7 +452,7 @@ impl ApiClient {
                 cfg,
                 file_logger::error_entry_with_id(
                     cfg.slot,
-                    "background-quota-poll",
+                    caller,
                     "GET",
                     &url,
                     &msg,

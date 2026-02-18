@@ -210,7 +210,7 @@ async fn is_slot_quota_full_realtime(
     }
 
     let slot_idx = slot_cfg.slot.saturating_sub(1);
-    match client.fetch_quota(slot_cfg).await {
+    match client.fetch_quota(slot_cfg, "warmup-precheck").await {
         Ok(snapshot) => {
             if let Some(current) = runtime_status.write().await.slots.get_mut(slot_idx) {
                 current.percentage = Some(snapshot.percentage);

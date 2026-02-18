@@ -163,7 +163,12 @@ const server = http.createServer((req, res) => {
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(getQuotaResponse()));
+    res.end(JSON.stringify({
+      code: 200,
+      data: getQuotaResponse(),
+      msg: "Operation successful",
+      success: true
+    }));
     return;
   }
 
@@ -197,11 +202,13 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       code: 200,
       data: {
-        total_usage: {
+        totalUsage: {
           totalModelCallCount: Math.floor(Math.random() * 500) + 100,
           totalTokensUsage: Math.floor(Math.random() * 15000000) + 5000000
         }
-      }
+      },
+      msg: "Operation successful",
+      success: true
     }));
     return;
   }
@@ -211,13 +218,15 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       code: 200,
       data: {
-        total_usage: {
+        totalUsage: {
           totalNetworkSearchCount: Math.floor(Math.random() * 50) + 10,
           totalWebReadMcpCount: Math.floor(Math.random() * 30) + 5,
           totalZreadMcpCount: Math.floor(Math.random() * 100) + 20,
           totalSearchMcpCount: Math.floor(Math.random() * 40) + 8
         }
-      }
+      },
+      msg: "Operation successful",
+      success: true
     }));
     return;
   }
