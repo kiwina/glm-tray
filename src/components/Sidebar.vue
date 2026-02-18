@@ -1,8 +1,8 @@
 <template>
   <aside class="w-[76px] bg-base-200 border-r border-neutral flex flex-col shrink-0 z-20 relative h-full">
-    <div class="flex-1 flex flex-col items-center w-full gap-1 overflow-y-auto no-scrollbar py-2">
+    <div class="flex-1 flex flex-col items-center w-full gap-0.5 overflow-y-auto no-scrollbar py-1">
       <!-- Home -->
-      <router-link to="/dashboard" class="nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent text-base-content/60 cursor-pointer hover:text-base-content hover:bg-base-content/[.04] transition" active-class="active">
+      <router-link to="/dashboard" class="nav-btn relative flex flex-col items-center justify-center gap-0.5 py-1.5 w-full border-none bg-transparent text-base-content/60 cursor-pointer hover:text-base-content hover:bg-base-content/[.04] transition" active-class="active">
         <svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="3" width="7" height="7" rx="1"/>
@@ -15,7 +15,7 @@
 
       <!-- Dynamic Keys -->
       <router-link v-for="s in visibleSlots" :key="s.slot" :to="`/key/${s.slot}`"
-                   class="nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent text-base-content/60 cursor-pointer hover:text-base-content hover:bg-base-content/[.04] transition"
+                   class="nav-btn relative flex flex-col items-center justify-center gap-0.5 py-1.5 w-full border-none bg-transparent text-base-content/60 cursor-pointer hover:text-base-content hover:bg-base-content/[.04] transition"
                    active-class="active">
           <span class="nav-num relative w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border border-neutral transition-colors">
             {{ s.slot }}
@@ -26,7 +26,7 @@
     </div>
 
     <!-- Controls -->
-    <div class="border-t border-neutral py-2 flex flex-col w-full px-0 gap-1">
+    <div class="border-t border-neutral flex flex-col w-full px-0 gap-1">
         <!-- Monitor button -->
         <button id="monitor-btn"
                 class="nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent cursor-pointer transition"
@@ -38,7 +38,8 @@
             <svg v-else class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             <span class="text-[10px] font-medium tracking-wide">{{ keysStore.runtime.monitoring ? 'Stop' : 'Start' }}</span>
         </button>
-
+    </div>
+    <div class="border-t border-neutral flex flex-col w-full px-0 gap-1">
         <!-- Warmup button -->
         <button id="warmup-btn"
                 class="nav-btn relative flex flex-col items-center justify-center gap-1 py-2.5 w-full border-none bg-transparent text-base-content/60 cursor-pointer hover:text-base-content hover:bg-base-content/[.04] transition"
@@ -55,9 +56,9 @@
 
     <!-- Logo -->
     <div class="border-t border-neutral py-2 w-full">
-        <a href="https://z.ai/subscribe?ic=GONVESHW5A" @click.prevent="openLogoLink" class="sidebar-logo-link block mt-1 mb-1 text-center opacity-50 hover:opacity-90 transition-opacity">
+        <router-link to="/settings" class="sidebar-logo-link block mt-1 mb-1 text-center opacity-50 hover:opacity-90 transition-opacity" title="Settings">
             <img src="../assets/logo-white.svg" alt="logo" class="w-8 h-8 mx-auto" />
-        </a>
+        </router-link>
     </div>
   </aside>
 </template>
@@ -68,7 +69,6 @@ import { useSettingsStore } from '../stores/settings';
 import { useKeysStore } from '../stores/keys';
 import { dotClass } from '../lib/ui-helpers';
 import { hasSlotWithKey } from '../lib/api';
-import { isTauriRuntime } from '../lib/constants';
 import type { KeySlotConfig } from '../lib/types';
 
 const settingsStore = useSettingsStore();
@@ -134,13 +134,5 @@ async function doWarmupAll() {
     }
 }
 
-async function openLogoLink() {
-    const url = 'https://z.ai/subscribe?ic=GONVESHW5A';
-    if (isTauriRuntime) {
-        const { openUrl } = await import('@tauri-apps/plugin-opener');
-        await openUrl(url);
-    } else {
-        window.open(url, '_blank');
-    }
-}
+
 </script>

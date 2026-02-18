@@ -9,7 +9,6 @@ import { backendInvoke } from '../lib/api';
 
 export const useAppStore = defineStore('app', () => {
     const version = ref('');
-    const pageTitle = ref('GLM Tray');
 
     // Update state
     const updateInfo = ref<UpdateInfo | null>(null);
@@ -109,7 +108,6 @@ export const useAppStore = defineStore('app', () => {
 
     return {
         version,
-        pageTitle,
         updateInfo,
         updateAvailable,
         updateStatus,

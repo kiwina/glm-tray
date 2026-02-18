@@ -1,22 +1,15 @@
 <template>
-  <div class="h-full overflow-y-auto p-4 main-content">
-    <!-- Status Hero -->
-    <div class="card bg-base-100 card-border border-base-300 card-sm from-base-content/5 bg-linear-to-bl to-50% mb-3">
-      <div class="card-body p-3">
-        <div class="flex items-center gap-3 text-xs font-semibold">
-           <span v-if="keysStore.runtime.monitoring" class="text-success">● Monitoring</span>
-           <span v-else class="text-base-content/30">○ Idle</span>
-           <span class="opacity-50">{{ enabledSlots.length }}/{{ MAX_KEYS }} active</span>
-           <span v-if="errorCount > 0" class="text-error ml-auto">{{ errorCount }} error{{ errorCount !== 1 ? 's' : '' }}</span>
-        </div>
-      </div>
-    </div>
+  <div class="h-full flex flex-col">
+    <div class="flex-1 overflow-y-auto p-2 main-content">
 
     <!-- Key List -->
-    <div v-for="slot in enabledSlots" :key="slot.slot">
-       <div class="flex items-center cursor-pointer key-row"
-            @click="goKey(slot.slot)">
-         <span class="w-2 h-2 rounded-full shrink-0" :class="dotClass(slot, getRuntime(slot.slot))"></span>
+    <div v-for="slot in enabledSlots" :key="slot.slot"
+         class="cursor-pointer key-row pb-1.5"
+         @click="goKey(slot.slot)">
+
+       <!-- Key header row -->
+       <div class="flex items-center gap-2 px-1 pt-1.5 pb-1">
+         <span class="w-2 h-2 rounded-full shrink-0 ml-1" :class="dotClass(slot, getRuntime(slot.slot))"></span>
          <span class="text-sm font-semibold whitespace-nowrap min-w-[60px]">{{ slot.name || `Key ${slot.slot}` }}</span>
 
          <div class="flex items-center gap-2 ml-auto shrink-0">
@@ -31,8 +24,6 @@
                         :class="pctBarClass(getRuntime(slot.slot)!.percentage || 0)"
                         :value="getRuntime(slot.slot)!.percentage || 0"
                         max="100"></progress>
-              <span class="text-sm font-bold tabular-nums min-w-8 text-right">{{ getRuntime(slot.slot)!.percentage }}%</span>
-              <span class="text-[10px] opacity-40 tabular-nums">{{ getRuntime(slot.slot)!.next_reset_hms || '--:--:--' }}</span>
               <span v-if="(getRuntime(slot.slot)?.quota_consecutive_errors || 0) > 0" class="badge badge-error badge-xs">quota ×{{ getRuntime(slot.slot)?.quota_consecutive_errors }}</span>
               <span v-if="(getRuntime(slot.slot)?.wake_consecutive_errors || 0) > 0" class="badge badge-warning badge-xs">wake ×{{ getRuntime(slot.slot)?.wake_consecutive_errors }}</span>
             </template>
@@ -42,8 +33,8 @@
          </div>
        </div>
 
-       <!-- Stats boxes below each key -->
-       <div class="border-t-base-content/5 border-t border-dashed px-1 pb-2">
+       <!-- Stats boxes -->
+       <div class="px-1">
          <div class="stats bg-base-100 w-full overflow-hidden shadow-sm border border-base-300 rounded-lg">
            <div class="stat py-2 px-3 flex flex-col items-center justify-center">
              <div class="stat-title text-[9px] text-center opacity-50">Used</div>
@@ -58,7 +49,7 @@
               <div class="stat-value text-base text-center">{{ formatTokens(getRuntime(slot.slot)?.total_tokens_5h ?? 0) }}</div>
            </div>
          </div>
-         <div class="text-[9px] opacity-40 text-center mt-1">Resets in {{ getRuntime(slot.slot)?.next_reset_hms || '--:--:--' }} · {{ formatUpdated(getRuntime(slot.slot)?.quota_last_updated) }}</div>
+         <div class="text-[9px] opacity-40 text-center mt-1">Resets at {{ getRuntime(slot.slot)?.next_reset_hms || '--:--:--' }} · {{ formatUpdated(getRuntime(slot.slot)?.quota_last_updated) }}</div>
        </div>
     </div>
 
@@ -72,24 +63,26 @@
         </svg>
         <span class="text-sm font-semibold">Add Key</span>
     </div>
+    </div>
 
-    <div class="text-center text-[10px] opacity-20 mt-3 pb-1">v{{ appStore.version || 'dev' }}</div>
+    <!-- Footer -->
+    <div class="px-3 py-2 shrink-0 text-center">
+      <div class="text-xs opacity-40"><a href="https://github.com/kiwina/glm-tray" class="link link-hover" @click.prevent="openGithubLink">@Kiwina</a> with <span class="text-red-500">❤</span> - <a href="https://z.ai/subscribe?ic=GONVESHW5A" class="link link-hover" @click.prevent="openSubscribeLink">Subscribe to z.ai coding plan</a></div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSettingsStore } from '../stores/settings';
 import { useKeysStore } from '../stores/keys';
-import { useAppStore } from '../stores/app';
 import { dotClass, pctBarClass, formatTokens } from '../lib/ui-helpers';
-import { MAX_KEYS } from '../lib/constants';
+import { isTauriRuntime } from '../lib/constants';
 
 const router = useRouter();
 const settingsStore = useSettingsStore();
 const keysStore = useKeysStore();
-const appStore = useAppStore();
 
 const config = computed(() => settingsStore.config);
 const enabledSlots = computed(() => config.value?.slots.filter(s => s.enabled) || []);
@@ -98,17 +91,6 @@ const nextFreeSlot = computed(() => {
     return config.value?.slots.filter(s => !s.enabled)?.[0] ?? null;
 });
 
-// Error count matching original: quota + wake + (consecutive if quota==0)
-const errorCount = computed(() => {
-    return keysStore.runtime.slots.reduce(
-        (a, s) =>
-            a +
-            s.quota_consecutive_errors +
-            s.wake_consecutive_errors +
-            (s.quota_consecutive_errors === 0 ? s.consecutive_errors : 0),
-        0
-    );
-});
 
 function getRuntime(slot: number) {
     return keysStore.runtime.slots.find(s => s.slot === slot);
@@ -123,7 +105,24 @@ function goKey(slot: number) {
     router.push(`/key/${slot}`);
 }
 
-onMounted(() => {
-    appStore.pageTitle = 'GLM Tray';
-});
+async function openSubscribeLink() {
+    const url = 'https://z.ai/subscribe?ic=GONVESHW5A';
+    if (isTauriRuntime) {
+        const { openUrl } = await import('@tauri-apps/plugin-opener');
+        await openUrl(url);
+    } else {
+        window.open(url, '_blank');
+    }
+}
+
+async function openGithubLink() {
+    const url = 'https://github.com/kiwina/glm-tray';
+    if (isTauriRuntime) {
+        const { openUrl } = await import('@tauri-apps/plugin-opener');
+        await openUrl(url);
+    } else {
+        window.open(url, '_blank');
+    }
+}
+
 </script>

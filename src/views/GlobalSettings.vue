@@ -80,8 +80,12 @@
               <span>Runtime status</span>
               <span class="font-semibold">{{ status }}</span>
             </div>
-            <div class="text-xs opacity-40">Version {{ appStore.version || 'dev' }}</div>
-            <div class="text-xs opacity-40">By Kiwina with <span class="text-error">❤</span> · <a href="https://z.ai/subscribe?ic=GONVESHW5A" class="link link-hover" target="_blank" rel="noopener">Subscribe to z.ai coding plan</a></div>
+             <div class="flex items-center justify-between text-sm">
+              <span>Version</span>
+              <span class="font-semibold">{{ appStore.version || 'dev' }}</span>
+            </div>
+            <div class="text-xs mt-2">By Kiwina with <span class="text-error">❤</span></div>
+            <div class="text-xs"><a href="https://z.ai/subscribe?ic=GONVESHW5A" class="link link-hover" target="_blank" rel="noopener">Subscribe to z.ai coding plan</a></div>
           </div>
         </div>
 
@@ -226,7 +230,6 @@ async function save() {
 }
 
 onMounted(() => {
-    appStore.pageTitle = 'Settings';
     loadForm();
 });
 

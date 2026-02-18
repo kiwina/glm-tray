@@ -2,26 +2,10 @@
   <main class="flex h-screen bg-base-300 font-sans text-base-content selection:bg-primary selection:text-primary-content overflow-hidden">
     <Sidebar />
     <div class="flex-1 flex flex-col min-w-0 bg-base-100">
-      <header v-show="showHeader" class="flex items-center justify-between px-5 py-3.5 border-b border-base-content/10 shrink-0 bg-base-100/50 backdrop-blur-md z-10 h-[60px]"
-              data-tauri-drag-region>
-        <div class="flex items-center gap-3 min-w-0">
-          <router-link v-show="$route.name === 'dashboard'" to="/settings" class="btn btn-xs btn-ghost btn-circle opacity-60 hover:opacity-100 transition"
-                       id="global-settings-btn" title="Settings">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-                <circle cx="12" cy="12" r="3"/>
-            </svg>
-          </router-link>
-          <h1 id="page-title" class="text-lg font-semibold tracking-tight truncate select-none">
-            {{ appStore.pageTitle }}
-          </h1>
-        </div>
-        <div id="header-actions" class="flex gap-1.5 items-center">
-            <!-- Teleport target for view-specific actions -->
-        </div>
-      </header>
-
-      <div class="flex-1 overflow-hidden relative" id="content-area">
+      <div v-if="!ready" class="flex-1 flex items-center justify-center">
+        <span class="loading loading-spinner loading-sm opacity-30"></span>
+      </div>
+      <div v-else class="flex-1 overflow-hidden relative" id="content-area">
         <router-view v-slot="{ Component }">
           <transition name="fade" mode="out-in">
              <component :is="Component" />
@@ -67,31 +51,27 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { onMounted, ref } from 'vue';
 import Sidebar from './components/Sidebar.vue';
 import { useAppStore } from './stores/app';
 import { useSettingsStore } from './stores/settings';
 import { useKeysStore } from './stores/keys';
 
-const route = useRoute();
 const appStore = useAppStore();
 const settingsStore = useSettingsStore();
 const keysStore = useKeysStore();
-
-// Hide header on settings page (matching original global-settings.ts behavior)
-const showHeader = computed(() => route.name !== 'settings');
+const ready = ref(false);
 
 onMounted(async () => {
     await appStore.init();
 
-    // Load config
+    // Load config + runtime before showing content
     await settingsStore.fetchSettings();
-
-    // Initial runtime fetch
     await keysStore.fetchRuntime();
 
-    // Start runtime polling (every 5 seconds, matching original)
+    ready.value = true;
+
+    // Start runtime polling (every 5 seconds)
     keysStore.startPolling();
 
     // Setup Tauri event listeners

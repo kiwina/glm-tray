@@ -1,15 +1,19 @@
 <template>
   <div class="flex flex-col h-full">
-    <div class="flex-1 overflow-y-auto p-4 main-content" id="tab-content">
-       <Teleport to="#header-actions">
-           <button v-if="hasKey" class="btn btn-xs btn-ghost btn-circle warmup-slot-btn" :class="{ 'warming-up': isWarmingUp }" title="Warmup this key" @click="warmupKey">
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-           </button>
-           <button v-if="currentTab === 'stats'" class="btn btn-xs btn-ghost btn-circle refresh-header-btn" title="Refresh stats" @click="refreshStats">
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-           </button>
-       </Teleport>
+    <!-- Inline header -->
+    <header class="flex items-center justify-between px-4 py-2 border-b border-base-content/10 shrink-0 h-[44px]" data-tauri-drag-region>
+      <h1 class="text-sm font-semibold tracking-tight select-none">{{ tabTitles[currentTab] }}</h1>
+      <div class="flex gap-1.5 items-center">
+        <button v-if="hasKey" class="btn btn-xs btn-ghost btn-circle warmup-slot-btn" :class="{ 'warming-up': isWarmingUp }" title="Warmup this key" @click="warmupKey">
+           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </button>
+        <button v-if="currentTab === 'stats'" class="btn btn-xs btn-ghost btn-circle refresh-header-btn" title="Refresh stats" @click="refreshStats">
+           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+        </button>
+      </div>
+    </header>
 
+    <div class="flex-1 overflow-y-auto p-4 main-content" id="tab-content">
        <component :is="activeTabComponent" :slotId="slotId" :key="slotId + '-' + currentTab" />
     </div>
 
@@ -38,11 +42,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useSettingsStore } from '../stores/settings';
 import { useKeysStore } from '../stores/keys';
-import { useAppStore } from '../stores/app';
 import { logUiAction } from '../lib/api';
 import KeyStats from './tabs/KeyStats.vue';
 import KeySchedule from './tabs/KeySchedule.vue';
@@ -51,7 +54,6 @@ import KeySettings from './tabs/KeySettings.vue';
 const route = useRoute();
 const settingsStore = useSettingsStore();
 const keysStore = useKeysStore();
-const appStore = useAppStore();
 
 const slotId = computed(() => Number(route.params.id));
 const currentTab = ref<'stats' | 'schedule' | 'settings'>('stats');
@@ -66,16 +68,11 @@ watch(hasKey, (val) => {
     }
 }, { immediate: true });
 
-// Update page title based on tab (matching original key-detail.ts)
 const tabTitles: Record<string, string> = {
     stats: 'Stats',
     schedule: 'Schedule',
     settings: 'Settings',
 };
-
-watch([slotId, currentTab], () => {
-    appStore.pageTitle = tabTitles[currentTab.value] || 'Stats';
-}, { immediate: true });
 
 const activeTabComponent = computed(() => {
     switch (currentTab.value) {

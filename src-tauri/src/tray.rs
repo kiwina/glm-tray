@@ -127,33 +127,21 @@ pub fn refresh_tray(app: &AppHandle, runtime: RuntimeStatus, has_ready_slot: boo
 
     let enabled_slots: Vec<_> = runtime.slots.iter().filter(|s| s.enabled).collect();
 
-    let mut lines = Vec::new();
+    // Windows tooltip limit is ~63 chars (NOTIFYICONDATA V1).
+    // Use ultra-compact single-line format: k1:85% | k2:72% | k3:n/a e1 | k4:DIS
+    let mut parts = Vec::new();
     for slot in &enabled_slots {
-        let label = if slot.name.is_empty() {
-            format!("k{}", slot.slot)
-        } else {
-            slot.name.clone()
-        };
+        let tag = format!("k{}", slot.slot);
 
         if slot.auto_disabled {
-            lines.push(format!("{}: DISABLED (errors)", label));
+            parts.push(format!("{}:DIS", tag));
             continue;
         }
 
         if slot.wake_auto_disabled {
-            let wake_errors = slot.wake_consecutive_errors;
-            lines.push(format!(
-                "{}: WAKE PAUSED (wake errors x{})",
-                label,
-                wake_errors
-            ));
+            parts.push(format!("{}:WKE", tag));
             continue;
         }
-
-        let time_text = slot
-            .next_reset_hms
-            .clone()
-            .unwrap_or_else(|| if slot.timer_active { "--:--:--".to_string() } else { "idle".to_string() });
 
         let pct_text = slot
             .percentage
@@ -161,18 +149,19 @@ pub fn refresh_tray(app: &AppHandle, runtime: RuntimeStatus, has_ready_slot: boo
             .unwrap_or_else(|| "n/a".to_string());
 
         if slot.consecutive_errors > 0 {
-            lines.push(format!("{}: {} / {} (err x{})", label, time_text, pct_text, slot.consecutive_errors));
+            parts.push(format!("{}:{} e{}", tag, pct_text, slot.consecutive_errors));
         } else {
-            lines.push(format!("{}: {} / {}", label, time_text, pct_text));
+            parts.push(format!("{}:{}", tag, pct_text));
         }
     }
 
-    if lines.is_empty() {
-        lines.push("Quota monitor idle".to_string());
-    }
+    let tooltip = if parts.is_empty() {
+        "Quota monitor idle".to_string()
+    } else {
+        parts.join(" | ")
+    };
 
-    let tooltip = lines.join("\n");
-    debug!("tray tooltip: {}", tooltip.replace('\n', " | "));
+    debug!("tray tooltip: {}", tooltip);
 
     tray.set_tooltip(Some(&tooltip))
         .map_err(|err| format!("failed to set tray tooltip: {err}"))?;
