@@ -1,74 +1,82 @@
 # Debugging Guide
 
-This document explains how to use debug mode and the mock server for development and testing.
+How to test GLM Tray without hitting production API endpoints.
+
+---
 
 ## Quick Start
 
-1. **Start the mock server:**
-   ```bash
-   node mock-server.cjs
-   ```
+**1. Start the mock server**
 
-2. **Enable debug mode in the app:**
-   - Open Global Settings (gear icon)
-   - Scroll to "Developer" section
-   - Toggle "Debug mode (use mock server)"
-   - Optionally set a custom mock server URL (default: `http://localhost:3456`)
+```bash
+node docs/mock-server.cjs
+```
 
-3. **Test wake functionality:**
-   - Add an API key (any value works with mock server)
-   - Enable the key
-   - Start monitoring
-   - The app will route all API calls to the mock server
+The server starts on port `3456` by default and prints a confirmation:
+
+```
+Mock server running on http://localhost:3456
+```
+
+**2. Enable debug mode in the app**
+
+- Open the app → click the **gear icon** (Global Settings)
+- Scroll to the **Developer** section
+- Toggle **"Debug mode (use mock server)"**
+- The URL field defaults to `http://localhost:3456` — change it if you used a custom port
+
+**3. Use any API key**
+
+In debug mode the mock server accepts any value as an API key. Add `test-key` to Slot 1 and enable the slot to begin.
+
+---
 
 ## Mock Server
 
-The mock server (`mock-server.cjs`) simulates the Z.ai API for testing without hitting production endpoints.
+`docs/mock-server.cjs` simulates the Z.ai / BigModel API locally.
 
-### Starting the Server
+### Options
 
 ```bash
-# Default: port 3456, 2 minute quota expiry
-node mock-server.cjs
+# Defaults: port 3456, quota expires after 2 minutes
+node docs/mock-server.cjs
 
 # Custom port
-node mock-server.cjs --port=8080
+node docs/mock-server.cjs --port=8080
 
-# Custom expiry time (in minutes)
-node mock-server.cjs --expiry=5
+# Custom expiry (minutes)
+node docs/mock-server.cjs --expiry=5
 
 # Combined
-node mock-server.cjs --port=8080 --expiry=1
+node docs/mock-server.cjs --port=8080 --expiry=1
 ```
 
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `MOCK_PORT` | Server port | `3456` |
-| `MOCK_EXPIRY` | Quota expiry in minutes | `2` |
+| Option | Env var | Default |
+|--------|---------|---------|
+| `--port` | `MOCK_PORT` | `3456` |
+| `--expiry` | `MOCK_EXPIRY` | `2` (minutes) |
 
 ### Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/monitor/usage/quota/limit` | GET | Returns quota info |
-| `/api/coding/paas/v4/chat/completions` | POST | Wake request (activates quota timer) |
-| `/health` | GET | Health check with current quota state |
+| `/api/monitor/usage/quota/limit` | GET | Returns current quota state |
+| `/api/monitor/usage/model-usage` | GET | Returns mock model usage data |
+| `/api/monitor/usage/tool-usage` | GET | Returns mock tool usage data |
+| `/api/coding/paas/v4/chat/completions` | POST | Wake request — starts the quota timer |
+| `/health` | GET | Server status and current quota state |
 
 ### Quota States
 
-The mock server simulates two quota states:
+The mock server cycles between two states:
 
-#### COLD State (Initial)
-- `TOKENS_LIMIT` has NO `nextResetTime`
-- App detects this and triggers a wake request
-- Returns to COLD after timer expires
+**COLD** — initial state and after timer expires
+- `TOKENS_LIMIT` has no `nextResetTime`
+- App detects this and sends a wake request
 
-#### WARM State (After Wake)
-- `TOKENS_LIMIT` HAS `nextResetTime`
-- Timer counts down until expiry
-- After expiry, returns to COLD state
+**WARM** — after a POST to `/chat/completions`
+- `TOKENS_LIMIT` has a `nextResetTime` set to `now + expiry`
+- Timer counts down until it expires, then returns to COLD
 
 ### Health Check
 
@@ -76,11 +84,9 @@ The mock server simulates two quota states:
 curl http://localhost:3456/health
 ```
 
-Response:
 ```json
 {
   "status": "ok",
-  "message": "Mock server running",
   "quota": {
     "state": "cold",
     "percentage": 23,
@@ -88,126 +94,87 @@ Response:
     "remainingHMS": null,
     "expiresAt": null
   },
-  "config": {
-    "expiryMinutes": 2
-  }
+  "config": { "expiryMinutes": 2 }
 }
 ```
 
-## Debug Mode in App
+---
 
-### Enabling Debug Mode
+## What Debug Mode Does
 
-1. Open the app
-2. Click the gear icon (Global Settings)
-3. Scroll to "Developer" section
-4. Toggle "Debug mode (use mock server)"
-5. Set mock server URL if different from default
+When debug mode is active:
 
-### What Debug Mode Does
+1. **URL rewriting** — every API request is redirected:
+   - `https://api.z.ai/...` → `http://localhost:3456/...`
+   - `https://open.bigmodel.cn/...` → `http://localhost:3456/...`
+2. **TLS disabled** — certificate validation is skipped for localhost
+3. **Banner shown** — Global Settings displays a warning banner while debug mode is on
 
-When debug mode is enabled:
+---
 
-1. **URL Rewriting**: All API URLs are rewritten to point to the mock server
-   - `https://api.z.ai/api/monitor/usage/quota/limit` → `http://localhost:3456/api/monitor/usage/quota/limit`
-   - `https://api.z.ai/api/coding/paas/v4/chat/completions` → `http://localhost:3456/api/coding/paas/v4/chat/completions`
+## Testing Scenarios
 
-2. **Certificate Validation**: Disabled for localhost testing
+### Manual wake test
 
-3. **Debug Banner**: Shows warning banner in Global Settings indicating debug mode is active
-
-### Debug Mode Indicator
-
-When debug mode is active, Global Settings shows:
-```
-⚠️ Debug mode - using mock server at http://localhost:3456
+```bash
+node docs/mock-server.cjs --expiry=1
 ```
 
-## Testing Wake Functionality
+1. Enable debug mode in the app
+2. Add Slot 1 with key `test-key`, enable the slot
+3. Click the **lightning bolt** (warmup) button
+4. Watch the mock server console — you should see the POST wake request
+5. Check quota shows `nextResetTime` present (state = WARM)
+6. Wait ~1 minute and verify quota returns to COLD
 
-### Manual Wake Test
+### Scheduled wake test
 
-1. Start mock server with short expiry:
-   ```bash
-   node mock-server.cjs --expiry=1
-   ```
-
-2. Enable debug mode in app
-
-3. Add a test key:
-   - Go to Key 1 settings
-   - Enter any API key (e.g., "test-key")
-   - Enable the key
-
-4. Click the warmup button (lightning icon)
-
-5. Watch the mock server console for the wake request
-
-6. Check the quota shows `nextResetTime` (timer active)
-
-7. Wait for expiry and verify quota returns to COLD state
-
-### Scheduled Wake Test
-
-1. Enable debug mode and configure a key
-
-2. Enable "Schedule after reset" with 1 minute delay
-
+1. Enable debug mode, configure Slot 1
+2. In Key Settings, enable **"Schedule after reset"** with a 1-minute delay
 3. Start monitoring
+4. Observe the mock server console for:
+   - Initial wake on startup
+   - Regular quota polls
+   - Automatic re-wake after the expiry timer triggers reset
 
-4. Watch mock server console for:
-   - Initial wake request
-   - Quota polls
-   - Scheduled wake after reset
+---
 
 ## Troubleshooting
 
-### Mock Server Not Responding
+**Mock server not responding**
 
-1. Check if server is running:
-   ```bash
-   curl http://localhost:3456/health
-   ```
+```bash
+# Check it's running
+curl http://localhost:3456/health
 
-2. Check for port conflicts:
-   ```bash
-   lsof -i :3456
-   ```
+# Check for port conflicts
+lsof -i :3456
 
-3. Try a different port:
-   ```bash
-   node mock-server.cjs --port=3457
-   ```
+# Use a different port
+node docs/mock-server.cjs --port=3457
+```
 
-### App Not Connecting to Mock Server
+Then update the mock URL in Global Settings → Developer to match.
 
-1. Verify debug mode is enabled in Global Settings
+**App still hitting production**
 
-2. Check mock server URL matches the running server
+- Confirm debug mode is toggled **on** in Global Settings → Developer
+- Restart the app after changing debug settings
+- Verify the mock URL starts with `http://` (not `https://`)
 
-3. Restart the app after changing debug settings
+**Config file location**
 
-### Certificate Errors
+| Platform | Path |
+|----------|------|
+| Windows | `%APPDATA%\glm-tray\settings.json` |
+| macOS | `~/Library/Application Support/glm-tray/settings.json` |
+| Linux | `~/.config/glm-tray/settings.json` |
 
-Debug mode automatically accepts invalid certificates for localhost. If you see certificate errors:
-
-1. Ensure debug mode is fully enabled (toggle off and on)
-
-2. Check the mock server URL starts with `http://` (not `https://`)
-
-## Configuration Files
-
-Debug settings are stored in the app config:
+The `debug` and `mock_url` fields are stored here:
 
 ```json
 {
   "debug": true,
-  "mock_url": "http://localhost:3456",
-  ...
+  "mock_url": "http://localhost:3456"
 }
 ```
-
-Config location:
-- **Linux**: `~/.config/glm-tray/config.json`
-- **macOS**: `~/Library/Application Support/glm-tray/config.json`
-- **Windows**: `%APPDATA%\glm-tray\config.json`

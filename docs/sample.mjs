@@ -1,16 +1,26 @@
 #!/usr/bin/env node
 
 /**
- * Usage query script.
- * Determines whether to call the Z.ai or ZHIPU endpoint based on ANTHROPIC_BASE_URL
- * and authenticates with ANTHROPIC_AUTH_TOKEN.
+ * docs/sample.mjs — Standalone quota query script
+ *
+ * A diagnostic CLI tool that queries the Z.ai / BigModel quota, model usage,
+ * and tool usage APIs directly — useful for verifying API keys and inspecting
+ * raw responses without running the full app.
+ *
+ * Usage:
+ *   node docs/sample.mjs
+ *
+ * Configuration:
+ *   Edit `baseUrl` and `authToken` below, or set them as environment variables.
+ *
+ * This file is NOT part of the Tauri app runtime. It is a developer utility only.
  */
 
 import https from 'https';
 
 // Read environment variables
-const baseUrl = 'https://api.z.ai/api/anthropic';
-const authToken = 'REDACTED_API_KEY';
+const baseUrl = process.env.GLM_BASE_URL || 'https://api.z.ai/api/anthropic';
+const authToken = process.env.GLM_AUTH_TOKEN || '';
 
 // Determine which platform to use
 let platform;
@@ -67,7 +77,7 @@ const queryParams = `?startTime=${encodeURIComponent(startTime)}&endTime=${encod
 
 const processQuotaLimit = (data) => {
   if (!data || !data.limits) return data;
-  
+
   data.limits = data.limits.map(item => {
     if (item.type === 'TOKENS_LIMIT') {
       return {
