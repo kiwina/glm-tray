@@ -35,12 +35,22 @@ export const useAppStore = defineStore('app', () => {
         document.documentElement.setAttribute('data-theme', 'glm');
     }
 
-    async function checkAndShowUpdate() {
+    async function checkAndShowUpdate(manual = false) {
         if (!isTauriRuntime) return;
 
         try {
             const info = await backendInvoke<UpdateInfo>('check_for_updates_cmd');
-            if (!info.has_update) return;
+            if (!info.has_update) {
+                // If manual check and no update, ensure we clear previous update info if we want strictness,
+                // but usually we just keep it or the backend handles it.
+                // For now, if no update, we just return.
+                // Actually, if we want "You're up to date" to work correctly in GlobalSettings,
+                // we might want to ensure updateInfo is null if has_update is false?
+                // The current backend returns has_update=false if no update.
+                // The current code does: if (!info.has_update) return;
+                // This implies updateInfo remains whatever it was (or null).
+                return;
+            }
 
             updateInfo.value = info;
 
@@ -52,10 +62,13 @@ export const useAppStore = defineStore('app', () => {
                 void installUpdate();
             }
 
-            // Show notification (if auto-download started, state is 'downloading', so toast shows progress immediately)
-            updateAvailable.value = { version: info.latest_version };
+            // Show notification (toast) only if NOT manual check
+            if (!manual) {
+                updateAvailable.value = { version: info.latest_version };
+            }
         } catch (err) {
             console.warn('Update check failed:', err);
+            throw err; // Re-throw so caller knows it failed
         }
     }
 

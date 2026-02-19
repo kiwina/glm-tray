@@ -156,7 +156,7 @@ async function checkNow() {
     checking.value = true;
     checkLabel.value = 'Check for updates';
     try {
-        await appStore.checkAndShowUpdate();
+        await appStore.checkAndShowUpdate(true);
         if (!appStore.updateInfo) {
             checkLabel.value = `You're up to date`;
         }
