@@ -6,6 +6,7 @@ import { relaunch as tauriRelaunch } from '@tauri-apps/plugin-process';
 import { isTauriRuntime } from '../lib/constants';
 import type { UpdateInfo } from '../lib/types';
 import { backendInvoke } from '../lib/api';
+import { useSettingsStore } from './settings';
 
 export const useAppStore = defineStore('app', () => {
     const version = ref('');
@@ -42,6 +43,16 @@ export const useAppStore = defineStore('app', () => {
             if (!info.has_update) return;
 
             updateInfo.value = info;
+
+            // Auto-download if enabled in settings
+            const settingsStore = useSettingsStore();
+
+            if (settingsStore.config?.auto_update !== false) {
+                // Start download seamlessly
+                void installUpdate();
+            }
+
+            // Show notification (if auto-download started, state is 'downloading', so toast shows progress immediately)
             updateAvailable.value = { version: info.latest_version };
         } catch (err) {
             console.warn('Update check failed:', err);

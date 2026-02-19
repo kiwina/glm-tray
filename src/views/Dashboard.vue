@@ -8,9 +8,9 @@
          @click="goKey(slot.slot)">
 
        <!-- Key header row -->
-       <div class="flex items-center gap-2 px-1 pt-1.5 pb-1">
-         <span class="w-2 h-2 rounded-full shrink-0 ml-1" :class="dotClass(slot, getRuntime(slot.slot))"></span>
-         <span class="text-sm font-semibold whitespace-nowrap min-w-[60px]">{{ slot.name || `Key ${slot.slot}` }}</span>
+         <div class="flex items-center gap-2 px-1 pt-1.5 pb-1">
+           <span class="w-2 h-2 rounded-full shrink-0 ml-1" :class="dotClass(slot, getRuntime(slot.slot), keysStore.runtime.monitoring)"></span>
+           <span class="text-sm font-semibold whitespace-nowrap min-w-[60px]">{{ slot.name || `Key ${slot.slot}` }}</span>
 
          <div class="flex items-center gap-2 ml-auto shrink-0">
             <template v-if="getRuntime(slot.slot)?.auto_disabled">
@@ -66,7 +66,7 @@
 
     <!-- Footer -->
     <div class="px-3 py-2 shrink-0 text-center">
-      <div class="text-xs opacity-40"><a href="https://github.com/kiwina/glm-tray" class="link link-hover" @click.prevent="openGithubLink">@Kiwina</a> with <span class="text-red-500">❤</span> - <a href="https://z.ai/subscribe?ic=GONVESHW5A" class="link link-hover" @click.prevent="openSubscribeLink">Subscribe to z.ai coding plan</a></div>
+      <div class="text-xs"><a href="https://github.com/kiwina/glm-tray" class="link link-hover opacity-60" @click.prevent="openGithubLink">by @Kiwina</a> <span class="text-red-500">❤</span> <a href="https://z.ai/subscribe?ic=GONVESHW5A" class="link link-hover opacity-60" @click.prevent="openSubscribeLink">Subscribe to z.ai coding plan</a></div>
     </div>
   </div>
 </template>

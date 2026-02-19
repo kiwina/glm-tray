@@ -19,7 +19,7 @@
                    active-class="active">
           <span class="nav-num relative w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border border-neutral transition-colors">
             {{ s.slot }}
-            <span class="absolute -top-0.5 -right-0.5 w-[7px] h-[7px] rounded-full border-[1.5px] border-base-200" :class="dotClass(s, getRuntime(s.slot))"></span>
+            <span class="absolute -top-0.5 -right-0.5 w-[7px] h-[7px] rounded-full border-[1.5px] border-base-200" :class="dotClass(s, getRuntime(s.slot), keysStore.runtime.monitoring)"></span>
           </span>
           <span class="text-[10px] font-medium tracking-wide max-w-[68px] text-center truncate">{{ shortName(s) }}</span>
       </router-link>

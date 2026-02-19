@@ -11,7 +11,11 @@ export function dotClass(
         consecutive_errors?: number;
         enabled?: boolean;
     } | undefined,
+    monitoring = true,
 ): string {
+    // Check global monitoring state first
+    if (!monitoring) return "bg-base-content/20";
+
     // No runtime slot = monitoring is stopped → muted
     if (!rt) return "bg-base-content/20";
 

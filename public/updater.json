@@ -1,0 +1,23 @@
+{
+    "version": "0.0.4",
+    "notes": "See release page for details",
+    "pub_date": "2026-02-16T15:08:02Z",
+    "platforms": {
+        "darwin-aarch64": {
+            "url": "https://github.com/kiwina/glm-tray/releases/download/v0.0.4/glm-tray_aarch64.app.tar.gz",
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUUTk4bkpBUktWMGZLZGVWcXFzc1JjMFNqTkxza2ZHem9FWVplUHVLNStCbGt4dDJialIwU25QZW1EdkkzanhKYkY2K2FUVWc2TGQxMDBSL0hwNzZac1ZZWUY5em5tMUFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxMjUzODk4CWZpbGU6Z2xtLXRyYXkuYXBwLnRhci5negpDUmsyZkszdW1JUnN2LzV4L3FNbTFxMVIreUxFbWI5RllUVjZsdU11NWVvLytBazlSYWRiOEo0eE5ZNDJaQndmZko3eU9HNVg0TUZIaTNhb0diNytDZz09Cg=="
+        },
+        "darwin-x86_64": {
+            "url": "https://github.com/kiwina/glm-tray/releases/download/v0.0.4/glm-tray_x64.app.tar.gz",
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUUTk4bkpBUktWMGJvTTViRlpQejVIbGpucERVNkwzSFNQRENqVGZxNUk2QzZuQmtGVjRZYmtGRXFNOUYvYmxSVVJCc05rZ0ZRZUtKYlNMR0JOOEtmenVqNkw3RytwMVF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxMjU0NDA0CWZpbGU6Z2xtLXRyYXkuYXBwLnRhci5negpuL3hxVHdyTnRSVlozVEZtNTR6cUhVMlY2R1B6QzM3Q00rRkFDUldndUp2dXdWeDd5cDFxcjVSQzVqY3VZOStKZHZkNW80bmJFUEpDcmNhbCsweldCdz09Cg=="
+        },
+        "windows-x86_64": {
+            "url": "https://github.com/kiwina/glm-tray/releases/download/v0.0.4/glm-tray_0.0.4_x64-setup.exe",
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUUTk4bkpBUktWMFNyb0NBR3Z1UkMrMFdtWkVaUkpIekJYZ2lYMzRTYzVlMGhTK0xjYStqMG9ScXo5bFZvZUJJUHV4dWJ6L2tjbkVBUHIyZGwrcWE3SG02TVVGZm5Wd2dVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxMjU0MDU3CWZpbGU6Z2xtLXRyYXlfMC4wLjNfeDY0LXNldHVwLmV4ZQpiVVlGY2s2OXZ6TnNlSC9Hb2ZTaGlaZi90bmxzdlVnZUhsK1dlaTdaQnE4aXhQOHh1OEljWXI3ejNHY0xGNlVodnRkMjBUL2J3ZTZEcnY4QWZpM2FCdz09Cg=="
+        },
+        "linux-x86_64": {
+            "url": "https://github.com/kiwina/glm-tray/releases/download/v0.0.3/glm-tray_0.0.3_amd64.AppImage",
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUUTk4bkpBUktWMFNwMGViTk1PUjhOb0N6SXNWS0VlM20zc2tEWDhYeUozMWFKWXNNazJlV1BmbVI1cENBYjZNSlNMUzRoRXZnQk5nS1I1YkFOclEyS1FFd1k4Q3I1T2dnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzcxMjUzOTkxCWZpbGU6Z2xtLXRyYXlfMC4wLjNfYW1kNjQuQXBwSW1hZ2UKeG9ZbkRLelFQekhaM2Y1U2VFR1laZUR6TG1DMWpaRUR2QmF2QmVJNVpvRkErUlVXKzBPNkpVQk9xZnNxbmlJanhoNXNUeUEvL0dZWkdTVGNvUXBUQkE9PQo="
+        }
+    }
+}

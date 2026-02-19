@@ -18,6 +18,8 @@
 
 const http = require('http');
 const url = require('url');
+const fs = require('fs');
+const pathModule = require('path');
 
 // Parse arguments
 function parseArgs() {
@@ -299,6 +301,22 @@ const server = http.createServer((req, res) => {
       config: { expiryMinutes: config.expiryMinutes }
     }, null, 2));
     return;
+  }
+
+  // Serve updater.json for testing
+  if (path === '/updater.json') {
+    const updaterPath = pathModule.join(__dirname, '../public/updater.json');
+    if (fs.existsSync(updaterPath)) {
+      console.log(`[${new Date().toISOString()}] Served /updater.json`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      fs.createReadStream(updaterPath).pipe(res);
+      return;
+    } else {
+      console.log(`[${new Date().toISOString()}] 404 /updater.json (File not found at ${updaterPath})`);
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'updater.json not found' }));
+      return;
+    }
   }
 
   // All other endpoints need auth → per-key state

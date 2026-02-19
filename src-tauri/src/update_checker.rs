@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 const GITHUB_API_URL: &str = "https://api.github.com/repos/kiwina/glm-tray/releases/latest";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
-const UPDATER_JSON_URL: &str = "https://github.com/kiwina/glm-tray/releases/latest/download/updater.json";
+const UPDATER_JSON_URL: &str = "http://localhost:3456/updater.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateInfo {
